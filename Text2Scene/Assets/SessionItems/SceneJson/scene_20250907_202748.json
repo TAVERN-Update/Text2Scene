@@ -1,0 +1,37 @@
+{
+  "scene_name": "Chibi Supermarket",
+  "scene_description": "A vibrant and cheerful supermarket designed in a chibi style, featuring colorful shelves stocked with various food items and playful decorations. The atmosphere is lively and inviting, perfect for a mobile app experience.",
+  "visual_style": "Chibi style, bright colors, simple shapes, playful and happy mood",
+  "objects": [
+    {
+      "name": "Grocery Shelf",
+      "visual_description": "A tall, colorful shelf filled with various food items like snacks and canned goods. Provides storage and display for products.",
+      "quantity": 3
+    },
+    {
+      "name": "Checkout Counter",
+      "visual_description": "A small, cute checkout counter with a cash register and space for bags. Serves as the payment area.",
+      "quantity": 1
+    },
+    {
+      "name": "Shopping Cart",
+      "visual_description": "A small, chibi-style shopping cart with a bright color scheme. Used for carrying groceries around the store.",
+      "quantity": 2
+    },
+    {
+      "name": "Fruit Stand",
+      "visual_description": "A colorful display stand filled with various fruits like apples, bananas, and oranges. Adds freshness to the scene.",
+      "quantity": 1
+    },
+    {
+      "name": "Snack Rack",
+      "visual_description": "A small rack showcasing a variety of snacks in bright packaging. Attracts customers with its vibrant colors.",
+      "quantity": 1
+    },
+    {
+      "name": "Milk Cooler",
+      "visual_description": "A chibi-style cooler filled with milk cartons and juice boxes. Provides a refreshing beverage option for shoppers.",
+      "quantity": 1
+    }
+  ]
+}

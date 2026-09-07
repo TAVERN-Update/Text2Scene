@@ -1,0 +1,128 @@
+{
+    "objects": [
+        {
+            "name": "Cauldron",
+            "description": "",
+            "visual_description": "A large, black iron cauldron with intricate engravings, used for brewing potions.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Potion Shelf",
+            "description": "",
+            "visual_description": "A wooden shelf with a rustic finish, displaying various potion bottles and magical ingredients.",
+            "quantity": 2,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Ingredient Cabinet",
+            "description": "",
+            "visual_description": "An ornate cabinet with glass doors, containing jars of mystical ingredients for potion-making.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Recipe Book",
+            "description": "",
+            "visual_description": "An ancient, leather-bound recipe book with glowing pages, filled with potion recipes and spells.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Love Potion",
+            "description": "",
+            "visual_description": "A heart-shaped vial filled with a shimmering pink liquid, emanating a soft, warm glow, adorned with delicate floral patterns.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Potion that turns you into a frog",
+            "description": "",
+            "visual_description": "A small, green potion bottle with a shimmering, translucent liquid that seems to ripple like water. It has a tiny frog charm hanging from the neck, adding a playful touch.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Invisibility Potion",
+            "description": "",
+            "visual_description": "A small, elegant bottle with a shimmering liquid that seems to fade in and out of visibility, adorned with a silver label inscribed with ancient runes.",
+            "quantity": 2,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Small Table",
+            "description": "",
+            "visual_description": "A quaint wooden table with a polished surface, adorned with intricate carvings, ideal for showcasing colorful potion bottles.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Stone Round Door",
+            "description": "",
+            "visual_description": "A large, circular door made of weathered stone, adorned with mystical runes and a glowing emblem at its center, blending seamlessly into the enchanting atmosphere of the lab.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Magical Long Wand",
+            "description": "",
+            "visual_description": "A slender, elegantly carved wand made from dark wood, adorned with shimmering runes that glow softly. It has a delicate, crystal tip that sparkles with magical energy.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Coat Rack for Wizards",
+            "description": "",
+            "visual_description": "An elegant coat rack carved from dark wood, adorned with mystical symbols and hooks shaped like crescent moons, perfect for hanging wizard robes.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        }
+    ],
+    "scene_name": "Ancient whimsical with a cute touch, featuring cold colors like blues and purples",
+    "scene_description": "An enchanting potion lab filled with colorful potions, ancient shelves, and whimsical magical artifacts. The atmosphere is mysterious yet inviting, perfect for witches and wizards crafting their spells.",
+    "visual_style": "Ancient whimsical, cold colors like blues and purples, wobbly cartoonish style"
+}

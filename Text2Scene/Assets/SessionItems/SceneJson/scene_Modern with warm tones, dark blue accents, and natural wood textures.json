@@ -1,0 +1,106 @@
+{
+    "objects": [
+        {
+            "name": "Cozy Sofa",
+            "description": "",
+            "visual_description": "A plush, dark blue sectional sofa with soft cushions. Provides comfortable seating for relaxation.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Wooden Coffee Table",
+            "description": "",
+            "visual_description": "A sleek, rectangular coffee table made of light wood with a smooth finish. Serves as a central surface for drinks and decor.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Heater",
+            "description": "",
+            "visual_description": "A modern electric heater with a minimalist design, finished in dark blue. Provides warmth and comfort in the living space.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Potted Plant",
+            "description": "",
+            "visual_description": "A tall, leafy indoor plant in a ceramic pot. Adds a touch of nature and freshness to the room.",
+            "quantity": 2,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Floor Lamp",
+            "description": "",
+            "visual_description": "A stylish floor lamp with a wooden base and a soft fabric shade. Provides ambient lighting for the cozy atmosphere.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Modern 4K Television",
+            "description": "",
+            "visual_description": "A sleek, ultra-thin 4K television with a minimalist black frame, mounted on the wall opposite the sofa. Its large screen enhances the modern aesthetic of the living room.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Wardrobe",
+            "description": "",
+            "visual_description": "A modern wardrobe with a sleek design, featuring dark blue sliding doors and wooden accents. Offers ample storage while complementing the cozy aesthetic of the room.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Sushi Box",
+            "description": "",
+            "visual_description": "A beautifully arranged wooden box filled with assorted sushi rolls, garnished with wasabi and pickled ginger. The vibrant colors of the sushi contrast nicely with the warm tones of the living room.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Ancient Vase",
+            "description": "",
+            "visual_description": "An intricately designed ancient vase with ornate patterns and a weathered finish, showcasing a rich history. It stands elegantly on a small pedestal, adding a touch of vintage charm to the modern space.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        }
+    ],
+    "scene_name": "Modern with warm tones, dark blue accents, and natural wood textures",
+    "scene_description": "A warm and inviting modern living room designed for relaxation and socializing. It features comfortable seating, natural elements, and a blend of dark blue and wooden tones. Mood: cozy, welcoming, and stylish.",
+    "visual_style": "Modern with warm tones, dark blue accents, and natural wood textures"
+}

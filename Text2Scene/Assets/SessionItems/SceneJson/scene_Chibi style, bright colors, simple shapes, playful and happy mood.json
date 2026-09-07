@@ -1,0 +1,139 @@
+{
+    "objects": [
+        {
+            "name": "Grocery Shelf",
+            "description": "",
+            "visual_description": "A tall, colorful shelf filled with various food items like snacks and canned goods. Provides storage and display for products.",
+            "quantity": 4,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Checkout Counter",
+            "description": "",
+            "visual_description": "A small, cute checkout counter with a cash register and space for bags. Serves as the payment area.",
+            "quantity": 2,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Shopping Cart",
+            "description": "",
+            "visual_description": "A small, chibi-style shopping cart with a bright color scheme. Used for carrying groceries around the store.",
+            "quantity": 2,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Fruit Stand",
+            "description": "",
+            "visual_description": "A colorful display stand filled with various fruits like apples, bananas, and oranges. Adds freshness to the scene.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Snack Rack",
+            "description": "",
+            "visual_description": "A small rack showcasing a variety of snacks in bright packaging. Attracts customers with its vibrant colors.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Fridges full of milk and cheese products",
+            "description": "",
+            "visual_description": "A pair of chibi-style fridges with colorful doors, showcasing an assortment of milk bottles and cheese packages. The fridges are cheerful and inviting, enhancing the dairy section of the supermarket.",
+            "quantity": 2,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Cute Cat",
+            "description": "",
+            "visual_description": "A small, adorable chibi-style cat with big eyes and a playful expression, sitting near the checkout counter. Its fur is a soft pastel color, adding charm to the vibrant supermarket.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Chibi Cashier",
+            "description": "",
+            "visual_description": "A cute chibi-style cashier with big expressive eyes and a cheerful smile, wearing a colorful uniform. Stands behind the checkout counter, ready to assist customers with their purchases.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Entrance Sliding Door",
+            "description": "",
+            "visual_description": "A large, chibi-style sliding door with a bright blue frame and transparent glass panels. It opens automatically, welcoming customers into the cheerful supermarket.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "chibi client 1",
+            "description": "",
+            "visual_description": "A small, adorable chibi character with oversized eyes and a cheerful expression, wearing a colorful outfit. They are designed to blend seamlessly into the vibrant atmosphere of the supermarket.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Chibi Client 2",
+            "description": "",
+            "visual_description": "A cute, chibi-style character with big eyes and a cheerful expression, wearing a colorful outfit. This character is designed to interact with the supermarket environment, adding a playful element to the scene.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        },
+        {
+            "name": "Chibi Client 3",
+            "description": "",
+            "visual_description": "A cute, chibi-style character with oversized eyes and a cheerful expression, dressed in a colorful outfit. They carry a small shopping basket and look excited about shopping.",
+            "quantity": 1,
+            "position": {
+                "x": 0.0,
+                "y": 0.0,
+                "z": 0.0
+            }
+        }
+    ],
+    "scene_name": "Chibi style, bright colors, simple shapes, playful and happy mood",
+    "scene_description": "A vibrant and cheerful supermarket designed in a chibi style, featuring colorful shelves stocked with various food items and playful decorations. The atmosphere is lively and inviting, perfect for a mobile app experience.",
+    "visual_style": "Chibi style, bright colors, simple shapes, playful and happy mood"
+}

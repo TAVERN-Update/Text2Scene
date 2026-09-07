@@ -1,0 +1,11 @@
+{
+  "Cozy_Sofa": {
+    "name": "Cozy_Sofa",
+    "relation_type": "absolute",
+    "relation": "center",
+    "target": "room",
+    "scale": "medium",
+    "placement": "floor",
+    "category": "furniture"
+  }
+}

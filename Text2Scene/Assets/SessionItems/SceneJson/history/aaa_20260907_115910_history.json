@@ -1,0 +1,20 @@
+{
+  "Cozy_Sofa": {
+    "name": "Cozy_Sofa",
+    "relation_type": "absolute",
+    "relation": "center",
+    "target": "room",
+    "scale": "medium",
+    "placement": "floor",
+    "category": "furniture"
+  },
+  "Wooden_Coffee_Table": {
+    "name": "Wooden_Coffee_Table",
+    "relation_type": "relative",
+    "relation": "in_front_of",
+    "target": "Cozy_Sofa",
+    "scale": "medium",
+    "placement": "floor",
+    "category": "furniture"
+  }
+}
