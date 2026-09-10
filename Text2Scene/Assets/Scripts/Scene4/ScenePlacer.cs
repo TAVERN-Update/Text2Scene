@@ -311,27 +311,11 @@ public class ScenePlacer : MonoBehaviour
         loadedObject.name = objectName;
         loadedObject.transform.parent = assetParent;
 
-        /*
-        // 1. Configurazione Collider e Scala per calcolare gli Extents
-        var geometryChild = loadedObject.transform.Find("geometry_0");
-        BoxCollider myBox = null;
-
-        if (geometryChild != null)
-        {
-            geometryChild.transform.localScale = scaleValue * Vector3.one; // Scala uniforme default
-            if (!geometryChild.TryGetComponent<BoxCollider>(out myBox))
-                myBox = geometryChild.gameObject.AddComponent<BoxCollider>();
-        }
-        Physics.SyncTransforms();
-
-        // Calcolo degli Extents (Metà della dimensione del box in metri reali)
-        Vector3 myExtents = myBox != null ? myBox.bounds.extents : Vector3.one * 0.5f; //Se non trova il collider dell'oggetto, applica un estensione di default di 0.5m 
-        */
         Vector3 targetPos = Vector3.zero;
 
         // 1. Configurazione Collider e Scala Neuro-Simbolica
         var geometryChild = loadedObject.transform.Find("geometry_0");
-        BoxCollider myBox;
+        BoxCollider myBox = null;
         Vector3 myExtents = Vector3.one; // Fallback di default
 
         if (geometryChild != null)
@@ -344,6 +328,7 @@ public class ScenePlacer : MonoBehaviour
 
             // --- INIZIO NORMALIZZAZIONE SCALE ---
             // Lettura del moltiplicatore richiesto dall'IA
+            /*
             float scaleMultiplier = 1.0f;
             if (objData.scale == "small") scaleMultiplier = 0.8f;
             else if (objData.scale == "large") scaleMultiplier = 1.2f;
@@ -366,6 +351,22 @@ public class ScenePlacer : MonoBehaviour
                 geometryChild.transform.localScale = new Vector3(scaleFactor, scaleFactor, scaleFactor) * scaleValue;
             }
             // --- FINE NORMALIZZAZIONE SCALE ---
+            */
+
+            float targetBaseSize = 1.0f; // Default per medium
+            if (objData.category == "accessory") targetBaseSize = 0.3f;
+            else if (objData.scale == "small") targetBaseSize = 0.6f;
+            else if (objData.scale == "large") targetBaseSize = 2.0f;
+
+            // Calcolo della dimensione massima attuale del modello e applicazione della scala su di essa
+            Vector3 currentExtents = myBox.bounds.extents;
+            float currentMaxSize = Mathf.Max(currentExtents.x, currentExtents.y, currentExtents.z) * 2f;
+
+            if (currentMaxSize > 0.01f) 
+            {
+                float scaleFactor = targetBaseSize / currentMaxSize;
+                geometryChild.transform.localScale = new Vector3(scaleFactor, scaleFactor, scaleFactor) * scaleValue;
+            }
 
             // AGGIORNAMENTO CRITICO: Ricalcolo degli extents DEFINITIVI dopo il ridimensionamento
             Physics.SyncTransforms(); 
@@ -403,84 +404,30 @@ public class ScenePlacer : MonoBehaviour
                 targetPos = new Vector3(-roomHalf + myExtents.x + wallInsetPad, 0, roomHalf - myExtents.z - wallInsetPad);
             }
         }
-/*
+
         // CASO 2: POSIZIONAMENTO RELATIVO (Rispetto ad arredi esistenti)
         else if (string.Equals(objData.relation_type, "relative", StringComparison.OrdinalIgnoreCase))
         {
             Transform targetObj = assetParent.Find(FormatName(objData.target));
             if (targetObj != null)
             {
-                Vector3 refPos = targetObj.position;
                 var refGeom = targetObj.Find("geometry_0");
                 BoxCollider refBox = refGeom != null ? refGeom.GetComponent<BoxCollider>() : null;
                 Vector3 refExtents = refBox != null ? refBox.bounds.extents : Vector3.one * 0.5f;
 
-                // Formula Vettoriale: P_nuova = P_ancora + (v_direzione * (E_ancora + E_oggetto + margine))
-                float distX = refExtents.x + myExtents.x + minSeparationXZ;
-                float distZ = refExtents.z + myExtents.z + minSeparationXZ;
-
-                switch (objData.relation.ToLower())
+                // Calcolo del centro volumetrico reale nello spazio globale
+                Vector3 refPos;
+                if (refGeom != null && refBox != null)
                 {
-                    case "in_front_of": // Il fronte della seduta punta verso AD (+Z)
-                        targetPos = refPos + new Vector3(0, 0, distZ);
-                        break;
-                    case "behind": // Il retro del divano punta verso BC (-Z)
-                        targetPos = refPos + new Vector3(0, 0, -distZ);
-                        break;
-                    case "to_the_left_of": // Sinistra (verso il lato C / -X)
-                        targetPos = refPos + new Vector3(-distX, 0, 0);
-                        break;
-                    case "to_the_right_of": // Destra (verso il lato A / +X)
-                        targetPos = refPos + new Vector3(distX, 0, 0);
-                        break;
-                    case "above": // Sopra al mobile (Tavoli/Mensole)
-                        targetPos = new Vector3(refPos.x, refPos.y + (refExtents.y * 2) + offset, refPos.z);
-                        break;
-                    default:
-                        targetPos = refPos + new Vector3(0, 0, distZ);
-                        break;
+                    refPos = refGeom.TransformPoint(refBox.center);
                 }
-            }
-            else
-            {
-                Debug.LogWarning($"[NeuroSymbolic] Target '{objData.target}' non trovato! Posiziono al centro.");
-                targetPos = Vector3.zero;
-            }
-        }
+                else
+                {
+                    refPos = targetObj.position;
+                }
 
-        // Calcolo finale altezza Y (ancoraggio al pavimento se non è "above")
-        string yMode = objData.relation == "above" ? "above" : "floor";
-        targetPos.y = ComputeYPosition(targetPos, yMode, loadedObject);
-
-        // Applica la posizione
-        loadedObject.transform.position = targetPos;
-        Physics.SyncTransforms();
-
-        
-        /*
-        // 1. Evita compenetrazioni con altri mobili
-        if (objData.relation != "above") 
-        {
-            FixFurnitureCollisions(loadedObject);
-            Physics.SyncTransforms();
-        }
-        
-        // 2. Evita compenetrazioni nei muri
-        FixWallCollisions(loadedObject);
-        Physics.SyncTransforms();
-
-        Debug.Log($"[TESI OK] Posizionato '{objectName}' con logica '{objData.relation}' alle coordinate: {targetPos}");*/
-
-        // CASO 2: POSIZIONAMENTO RELATIVO (Rispetto ad arredi esistenti)
-        else if (string.Equals(objData.relation_type, "relative", StringComparison.OrdinalIgnoreCase))
-        {
-            Transform targetObj = assetParent.Find(FormatName(objData.target));
-            if (targetObj != null)
-            {
-                Vector3 refPos = targetObj.position;
-                var refGeom = targetObj.Find("geometry_0");
-                BoxCollider refBox = refGeom != null ? refGeom.GetComponent<BoxCollider>() : null;
-                Vector3 refExtents = refBox != null ? refBox.bounds.extents : Vector3.one * 0.5f;
+                // Proiezione complanare al pavimento
+                refPos.y = 0;
 
                 float distX = refExtents.x + myExtents.x + minSeparationXZ;
                 float distZ = refExtents.z + myExtents.z + minSeparationXZ;
@@ -499,11 +446,11 @@ public class ScenePlacer : MonoBehaviour
                     case "to_the_right_of": 
                         targetPos = refPos + (targetObj.right * distX);
                         break;
-                    case "above": // Sopra al mobile (Tavoli/Mensole)
+                    case "above": 
                         targetPos = new Vector3(refPos.x, refPos.y + (refExtents.y * 2) + offset, refPos.z);
                         break;
                     default:
-                        targetPos = refPos + new Vector3(0, 0, distZ);
+                        targetPos = refPos + (targetObj.forward * distZ);
                         break;
                 }
             }
@@ -536,6 +483,17 @@ public class ScenePlacer : MonoBehaviour
         // Applica la posizione finale sicura
         loadedObject.transform.position = targetPos;
         Physics.SyncTransforms();
+
+        // --- GESTIONE ROTAZIONE VERSO IL CENTRO (MURI) ---
+        if (string.Equals(objData.relation_type, "absolute", StringComparison.OrdinalIgnoreCase) && objData.relation.StartsWith("wall_"))
+        {
+            // Mantiene l'asse Y invariato per non inclinare l'oggetto verso il pavimento
+            Vector3 lookTarget = Vector3.zero;
+            lookTarget.y = loadedObject.transform.position.y;
+            
+            // Ruota la mesh affinché la sua faccia frontale guardi il centro della stanza
+            loadedObject.transform.LookAt(lookTarget);
+        }
 
         Debug.Log($"[TESI OK] Posizionato '{objectName}' con logica '{objData.relation}' alle coordinate finali sicure: {targetPos}");
     }

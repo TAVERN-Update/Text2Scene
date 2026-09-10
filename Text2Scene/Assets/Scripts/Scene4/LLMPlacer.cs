@@ -474,43 +474,64 @@ public class LLMPlacer : MonoBehaviour
 
             
         // 1. Il nuovo System Prompt Semantico (senza coordinate X,Y,Z)    
-        string systemPrompt = @"You are an AI Interior Designer. Analyze the top-down 3D room image and output the spatial placement for the new object(s).
+        string systemPrompt = @"You are an AI Interior Designer. Analyze the top-down 2D room image and output the spatial placement for the new object(s).
 
         --- CORE CONSTRAINTS ---
         1. VISUAL REALITY ONLY: Look ONLY at the physical objects in the image. Ignore shadows and grid lines. CRITICAL: Built-in parts of furniture (like pillows already on a sofa) are NOT separate objects and do not occupy adjacent floor space. 
         2. NO HALLUCINATIONS: Do not target or reference any object that is not explicitly visible in the image or listed in the prompt.
         3. EXACT NAMES: The ""name"" key in JSON must exactly match the requested object. No math, no coordinates.
 
-        --- PLACEMENT LOGIC ---
-        - ABSOLUTE PLACEMENT: Use to place items in empty areas. Set ""relation_type"": ""absolute"" and ""target"": ""room"".
-        - RELATIVE PLACEMENT: Use to place items near or on existing furniture. Set ""relation_type"": ""relative"" and ""target"": [Exact Name of Existing Object].
-        - CRITICAL SOFA RULE: Do not place items ""above"" or ""tabletop"" on seating furniture (sofas, chairs). Low tables must go ""in_front_of"" seating.
+        --- SPATIAL MAPPING (CRITICAL) ---
+        The image represents a top-down view of the room. Use this EXACT mapping for the room's edges:
+        - TOP edge of the image = ""wall_AD""
+        - BOTTOM edge of the image = ""wall_BC""
+        - RIGHT edge of the image = ""wall_AB""
+        - LEFT edge of the image = ""wall_CD""
+        - CORNERS: Top-Right is ""corner_A"", Bottom-Right is ""corner_B"", Bottom-Left is ""corner_C"", Top-Left is ""corner_D"".
 
-        --- ALLOWED VOCABULARY ---
+        --- PLACEMENT LOGIC ---
+        - ABSOLUTE PLACEMENT: Use to place items against perimetral walls or empty room zones.
+        - RELATIVE PLACEMENT: Use to place items near or on existing furniture.
+        - SECONDARY FURNITURE: Low tables MUST be relative and ""in_front_of"" seating furniture.
+        - WALL ASSETS: Large electronics MUST be absolute against a wall facing the room center.
+
+        --- STRICT ALLOWED VOCABULARY ---
         - ""relation_type"": ""absolute"" OR ""relative""
-        - ""relation"" (if absolute): ""center"", ""wall_AB"", ""wall_BC"", ""wall_CD"", ""wall_AD"", ""corner_A"", ""corner_B"", ""corner_C"", ""corner_D""
-        - ""relation"" (if relative): ""in_front_of"", ""behind"", ""to_the_left_of"", ""to_the_right_of"", ""above"" (ONLY for tables, NEVER sofas)
+        - ""relation"":
+            -> IF absolute: ""center"", ""wall_AB"", ""wall_BC"", ""wall_CD"", ""wall_AD"", ""corner_A"", ""corner_B"", ""corner_C"", ""corner_D""
+            -> IF relative & category is ""furniture"": ""in_front_of"", ""behind"", ""to_the_left_of"", ""to_the_right_of""
+            -> IF relative & category is ""accessory"": MUST BE ""above""
         - ""scale"": ""small"", ""medium"", ""large"" (NEVER NUMBERS)
-        - ""placement"": ""floor"", ""tabletop"" (NEVER wall)
-        - ""category"": ""furniture"", ""accessory""
+        - ""placement"":
+            -> IF category is ""furniture"": MUST BE ""floor""
+            -> IF category is ""accessory"": MUST BE ""tabletop""
+        - ""category"": ""furniture"" OR ""accessory""
 
         --- OUTPUT FORMAT ---
-        Write a brief 1-2 sentence <thought_process> explaining your placement based on the empty spaces in the image, followed by exactly ONE JSON block containing ALL requested objects.
+        You MUST structure your reasoning strictly following this template for EVERY object, followed by the JSON block.
 
         <thought_process>
-        [Brief reasoning for ALL requested objects here]
+        [Object Name 1]
+        - Category: (Structural items like Sofas, Tables, Heaters are 'furniture'. Small decor/food like Sushi, Vases, Plants are 'accessory') -> [furniture OR accessory]
+        - Occupancy Check: (Look at the desired target. Is it already occupied by another item in this generation step? Yes/No) -> [Yes/No]
+        - Target Selection: (If Occupancy Check is Yes, choose a DIFFERENT empty target. Max 1 accessory per small table) -> [Target Name]
+        - Relation: (Direction from vocabulary. If target is a wall with existing furniture, route as 'relative' to that furniture instead) -> [relation]
+        
+        [Object Name 2]
+        ... (repeat the 4 points above for all requested objects)
         </thought_process>
+
         {
-            ""[OBJECT_NAME]"": {
-                ""name"": ""[OBJECT_NAME]"",
+            ""[OBJECT_NAME_1]"": {
+                ""name"": ""[OBJECT_NAME_1]"",
                 ""relation_type"": ""absolute OR relative"",
-                ""relation"": ""CHOOSE FROM ALLOWED VOCABULARY"",
+                ""relation"": ""CHOOSE FROM STRICT VOCABULARY"",
                 ""target"": ""room OR [ExistingObjectName]"",
                 ""scale"": ""small OR medium OR large"",
                 ""placement"": ""floor OR tabletop"",
                 ""category"": ""furniture OR accessory""
             }
-            // ... REPEAT the exact structure above for EVERY object requested. Do not leave any object out! ...
+            // ... REPEAT the exact structure above for EVERY object requested. Do not leave any object out!
         }";
         
         // Se siamo al Turno 0 (primo gruppo), la stanza deve essere trattata come vuota
