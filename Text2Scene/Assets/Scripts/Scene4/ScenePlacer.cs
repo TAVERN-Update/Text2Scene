@@ -218,89 +218,170 @@ public class ScenePlacer : MonoBehaviour
         return y;
     }
 
-/*
-    private void PlaceAllObjects()
-    {
-        string jsonString = File.ReadAllText(jsonPath);
-        var dict = JsonConvert.DeserializeObject<Dictionary<string, ObjectData>>(FixUnbalancedBraces(jsonString));
-
-        foreach (var kvp in dict)
-        {
-            var obj = kvp.Value;
-            // Passa: objectname, rotation, xvalue, zvalue, ymode, scale
-            PlaceSingle(obj.name, obj.rotation, obj.position.x, obj.position.z, obj.position.y, obj.scale);
-        }
-    }
-
-    private void PlaceSingle(string name, int rotation, float x, float z, string mode, float scale)
-    {
-        string objectName = FormatName(name);
-        string objectPath = Path.Combine(modelsPath, objectName + ".glb");
-
-        GameObject loadedObject;
-        try
-        {
-            loadedObject = Importer.LoadFromFile(objectPath);
-        }
-        catch (System.Exception ex)
-        {
-            Debug.LogError($"Failed to load GLB file for '{objectName}': {ex.Message}");
-            return;
-        }
-
-        loadedObject.name = objectName;
-        
-        //loadedObject.transform.localPosition = new Vector3(x, 0, z);
-
-        
-        loadedObject.transform.rotation = Quaternion.Euler(0, rotation, 0);
-
-        // AGGIUNGI BOX COLLIDER AL FIGLIO geometry_0
-        var geometryChild = loadedObject.transform.Find("geometry_0");
-        if (geometryChild != null)
-        {
-            geometryChild.transform.localScale = scale * scaleValue * Vector3.one;
-            Physics.SyncTransforms();
-
-            if (!geometryChild.gameObject.GetComponent<BoxCollider>())
-                geometryChild.gameObject.AddComponent<BoxCollider>();             
-        }
-
-        else
-        {
-            Debug.LogWarning($"geometry_0 non trovato come figlio di {objectName}");
-        }
-        //loadedObject.transform.localScale = scale * scaleValue * Vector3.one;
-
-        Physics.SyncTransforms();
-        loadedObject.transform.localPosition = new Vector3(x, ComputeYPosition(new Vector3(x, 0, z), mode, loadedObject), z);
-        
-        loadedObject.transform.parent = assetParent;
-        //FixWallCollisions(loadedObject);
-
-    }
-*/
-
     private void PlaceAllObjects()
     {
         string jsonString = File.ReadAllText(jsonPath);
         // 1. Deserializziamo usando il nuovo schema neuro-simbolico
-        var dict = JsonConvert.DeserializeObject<Dictionary<string, NeuroSymbolicObjectData>>(FixUnbalancedBraces(jsonString));
+        var dict = JsonConvert.DeserializeObject<Dictionary<string, ObjectData>>(FixUnbalancedBraces(jsonString));
 
         foreach (var kvp in dict)
         {
-            PlaceSingleNeuroSymbolic(kvp.Value);
+            PlaceSingleObject(kvp.Value);
         }
     }
 
+    
     // --- MOTORE DI RAGIONAMENTO SPAZIALE VETTORIALE ---
-    private void PlaceSingleNeuroSymbolic(NeuroSymbolicObjectData objData)
+    // private void PlaceSingleObject(ObjectData objData)
+    // {
+    //     string objectName = FormatName(objData.name);
+    //     string objectPath = Path.Combine(modelsPath, objectName + ".glb");
+
+    //     GameObject loadedObject;
+    //     try {
+    //         loadedObject = Importer.LoadFromFile(objectPath);
+    //     } catch (System.Exception ex) {
+    //         Debug.LogError($"Failed to load GLB file for '{objectName}': {ex.Message}");
+    //         return;
+    //     }
+
+    //     loadedObject.name = objectName;
+    //     // Diventa ufficialmente figlio di assetParent (così il sistema di collisioni lo riconosce)
+    //     loadedObject.transform.parent = assetParent;
+
+    //     // 1. SETUP COLLIDER & SCALING
+    //     var geometryChild = loadedObject.transform.Find("geometry_0");
+    //     BoxCollider myBox = null;
+    //     Vector3 myWorldExtents = Vector3.one; 
+
+    //     if (geometryChild != null)
+    //     {
+    //         if (!geometryChild.TryGetComponent<BoxCollider>(out myBox))
+    //             myBox = geometryChild.gameObject.AddComponent<BoxCollider>();
+            
+    //         Physics.SyncTransforms(); 
+
+    //         float targetBaseSize = 1.0f; 
+    //         if (objData.category == "accessory") targetBaseSize = 0.3f;
+    //         else if (objData.scale == "small") targetBaseSize = 0.6f;
+    //         else if (objData.scale == "large") targetBaseSize = 2.0f;
+
+    //         Vector3 currentExtents = myBox.bounds.extents;
+    //         float currentMaxSize = Mathf.Max(currentExtents.x, currentExtents.y, currentExtents.z) * 2f;
+
+    //         if (currentMaxSize > 0.01f) 
+    //         {
+    //             float scaleFactor = targetBaseSize / currentMaxSize;
+    //             geometryChild.transform.localScale = new Vector3(scaleFactor, scaleFactor, scaleFactor) * scaleValue;
+    //         }
+    //         Physics.SyncTransforms(); 
+    //     }
+
+    //     // 2. PRE-ROTAZIONE (Fatta prima di muovere l'oggetto per avere gli ingombri corretti)
+    //     if (string.Equals(objData.relation_type, "absolute", StringComparison.OrdinalIgnoreCase))
+    //     {
+    //         switch (objData.relation)
+    //         {
+    //             case "wall_AB": loadedObject.transform.rotation = Quaternion.Euler(0, -90, 0); break; // +X guarda -X
+    //             case "wall_CD": loadedObject.transform.rotation = Quaternion.Euler(0, 90, 0); break;  // -X guarda +X
+    //             case "wall_AD": loadedObject.transform.rotation = Quaternion.Euler(0, 180, 0); break; // +Z guarda -Z
+    //             case "wall_BC": loadedObject.transform.rotation = Quaternion.Euler(0, 0, 0); break;   // -Z guarda +Z
+                
+    //             // Rotazioni per gli angoli (guardano verso il centro)
+    //             case "corner_A": loadedObject.transform.rotation = Quaternion.Euler(0, 0, 0); break; 
+    //             case "corner_B": loadedObject.transform.rotation = Quaternion.Euler(0, -90, 0); break; 
+    //             case "corner_C": loadedObject.transform.rotation = Quaternion.Euler(0, 180, 0); break; 
+    //             case "corner_D": loadedObject.transform.rotation = Quaternion.Euler(0, 90, 0); break;
+    //         }
+    //     }
+    //     else if (string.Equals(objData.relation_type, "relative", StringComparison.OrdinalIgnoreCase))
+    //     {
+    //         Transform targetObj = assetParent.Find(FormatName(objData.target));
+    //         if (targetObj != null && objData.relation != "above")
+    //         {
+    //             loadedObject.transform.rotation = targetObj.rotation;
+    //         }
+    //     }
+
+    //     // AGGIORNA GLI INGOMBRI GLOBALI DOPO LA ROTAZIONE
+    //     Physics.SyncTransforms(); 
+    //     if (myBox != null) myWorldExtents = myBox.bounds.extents;
+
+    //     // 3. CALCOLO POSIZIONE INIZIALE
+    //     Vector3 targetPos = Vector3.zero;
+
+    //     if (string.Equals(objData.relation_type, "absolute", StringComparison.OrdinalIgnoreCase))
+    //     {
+    //         if (objData.relation == "center") targetPos = Vector3.zero;
+    //         else if (objData.relation == "wall_AB") targetPos = new Vector3(roomHalf - myWorldExtents.x - wallInsetPad, 0, 0);
+    //         else if (objData.relation == "wall_CD") targetPos = new Vector3(-roomHalf + myWorldExtents.x + wallInsetPad, 0, 0);
+    //         else if (objData.relation == "wall_AD") targetPos = new Vector3(0, 0, roomHalf - myWorldExtents.z - wallInsetPad);
+    //         else if (objData.relation == "wall_BC") targetPos = new Vector3(0, 0, -roomHalf + myWorldExtents.z + wallInsetPad);
+            
+    //         else if (objData.relation == "corner_A") targetPos = new Vector3(roomHalf - myWorldExtents.x - wallInsetPad, 0, roomHalf - myWorldExtents.z - wallInsetPad);
+    //         else if (objData.relation == "corner_B") targetPos = new Vector3(roomHalf - myWorldExtents.x - wallInsetPad, 0, -roomHalf + myWorldExtents.z + wallInsetPad);
+    //         else if (objData.relation == "corner_C") targetPos = new Vector3(-roomHalf + myWorldExtents.x + wallInsetPad, 0, -roomHalf + myWorldExtents.z + wallInsetPad);
+    //         else if (objData.relation == "corner_D") targetPos = new Vector3(-roomHalf + myWorldExtents.x + wallInsetPad, 0, roomHalf - myWorldExtents.z - wallInsetPad);
+    //     }
+    //     else if (string.Equals(objData.relation_type, "relative", StringComparison.OrdinalIgnoreCase))
+    //     {
+    //         Transform targetObj = assetParent.Find(FormatName(objData.target));
+    //         if (targetObj != null)
+    //         {
+    //             var refGeom = targetObj.Find("geometry_0");
+    //             BoxCollider refBox = refGeom != null ? refGeom.GetComponent<BoxCollider>() : null;
+    //             Vector3 refExtents = refBox != null ? refBox.bounds.extents : Vector3.one * 0.5f;
+
+    //             Vector3 refPos = (refGeom != null && refBox != null) ? refGeom.TransformPoint(refBox.center) : targetObj.position;
+    //             refPos.y = 0;
+
+    //             float distX = refExtents.x + myWorldExtents.x + minSeparationXZ;
+    //             float distZ = refExtents.z + myWorldExtents.z + minSeparationXZ;
+
+    //             switch (objData.relation.ToLower())
+    //             {
+    //                 case "in_front_of": targetPos = refPos + (targetObj.forward * distZ); break;
+    //                 case "behind": targetPos = refPos - (targetObj.forward * distZ); break;
+    //                 case "to_the_left_of": targetPos = refPos - (targetObj.right * distX); break;
+    //                 case "to_the_right_of": targetPos = refPos + (targetObj.right * distX); break;
+    //                 case "above": 
+    //                     float safeSpanX = refExtents.x * 0.6f;
+    //                     float safeSpanZ = refExtents.z * 0.6f;
+    //                     float jitterX = UnityEngine.Random.Range(-safeSpanX, safeSpanX);
+    //                     float jitterZ = UnityEngine.Random.Range(-safeSpanZ, safeSpanZ);
+    //                     targetPos = new Vector3(refPos.x + jitterX, refPos.y + (refExtents.y * 2) + offset, refPos.z + jitterZ);
+    //                     break;
+    //                 default: targetPos = refPos + (targetObj.forward * distZ); break;
+    //             }
+    //         }
+    //     }
+
+    //     // 4. SOLVER COMPENETRAZIONI RIPARATO
+    //     if (objData.relation != "above") 
+    //     {
+    //         // Passiamo myWorldExtents al solver per farlo calcolare perfettamente
+    //         targetPos = FindValidPosition(loadedObject, myBox, targetPos, myWorldExtents);
+    //     }
+    //     else 
+    //     {
+    //         float maxX = roomHalf - myWorldExtents.x - wallInsetPad;
+    //         float maxZ = roomHalf - myWorldExtents.z - wallInsetPad;
+    //         targetPos.x = Mathf.Clamp(targetPos.x, -maxX, maxX);
+    //         targetPos.z = Mathf.Clamp(targetPos.z, -maxZ, maxZ);
+    //     }
+
+    //     // 5. APPLICAZIONE FINALE
+    //     targetPos.y = ComputeYPosition(targetPos, objData.relation == "above" ? "above" : "floor", loadedObject);
+    //     loadedObject.transform.position = targetPos;
+    //     Physics.SyncTransforms();
+    // }
+
+    private void PlaceSingleObject(ObjectData objData)
     {
         string objectName = FormatName(objData.name);
         string objectPath = Path.Combine(modelsPath, objectName + ".glb");
 
         GameObject loadedObject;
-        
         try {
             loadedObject = Importer.LoadFromFile(objectPath);
         } catch (System.Exception ex) {
@@ -311,54 +392,23 @@ public class ScenePlacer : MonoBehaviour
         loadedObject.name = objectName;
         loadedObject.transform.parent = assetParent;
 
-        Vector3 targetPos = Vector3.zero;
-
-        // 1. Configurazione Collider e Scala Neuro-Simbolica
+        // 1. SETUP COLLIDER & SCALING
         var geometryChild = loadedObject.transform.Find("geometry_0");
         BoxCollider myBox = null;
-        Vector3 myExtents = Vector3.one; // Fallback di default
+        Vector3 myWorldExtents = Vector3.one; 
 
         if (geometryChild != null)
         {
-            // Aggiunta dell collider PRIMA per poter leggere le sue misure originali sballate
             if (!geometryChild.TryGetComponent<BoxCollider>(out myBox))
                 myBox = geometryChild.gameObject.AddComponent<BoxCollider>();
             
-            Physics.SyncTransforms(); // Sincronizazione per leggere i bounds grezzi
+            Physics.SyncTransforms(); 
 
-            // --- INIZIO NORMALIZZAZIONE SCALE ---
-            // Lettura del moltiplicatore richiesto dall'IA
-            /*
-            float scaleMultiplier = 1.0f;
-            if (objData.scale == "small") scaleMultiplier = 0.8f;
-            else if (objData.scale == "large") scaleMultiplier = 1.2f;
-
-            // Determinazione della misura base ideale in base al placement
-            bool isAccessory = objData.category == "accessory";
-            // 30 cm (0.3f) per qualsiasi accessorio (vasi, libri, sushi), 1.5m per i mobili veri
-            float targetBaseSize = isAccessory ? 0.3f : 1.5f;
-
-            // Misurazione della grandezza originale del modello
-            Vector3 currentExtents = myBox.bounds.extents;
-            float currentSize = isAccessory ? (currentExtents.y * 2f) : (currentExtents.x * 2f);
-
-            // Applicazione dela formula (MisuraBase * MoltiplicatoreScala) / DimensioneReale
-            if (currentSize > 0.01f) 
-            {
-                float scaleFactor = targetBaseSize * scaleMultiplier / currentSize;
-                
-                // Manteniamo anche il 'scaleValue' globale del tuo script per eventuale debug dell'intera stanza
-                geometryChild.transform.localScale = new Vector3(scaleFactor, scaleFactor, scaleFactor) * scaleValue;
-            }
-            // --- FINE NORMALIZZAZIONE SCALE ---
-            */
-
-            float targetBaseSize = 1.0f; // Default per medium
+            float targetBaseSize = 1.0f; 
             if (objData.category == "accessory") targetBaseSize = 0.3f;
             else if (objData.scale == "small") targetBaseSize = 0.6f;
             else if (objData.scale == "large") targetBaseSize = 2.0f;
 
-            // Calcolo della dimensione massima attuale del modello e applicazione della scala su di essa
             Vector3 currentExtents = myBox.bounds.extents;
             float currentMaxSize = Mathf.Max(currentExtents.x, currentExtents.y, currentExtents.z) * 2f;
 
@@ -367,45 +417,74 @@ public class ScenePlacer : MonoBehaviour
                 float scaleFactor = targetBaseSize / currentMaxSize;
                 geometryChild.transform.localScale = new Vector3(scaleFactor, scaleFactor, scaleFactor) * scaleValue;
             }
-
-            // AGGIORNAMENTO CRITICO: Ricalcolo degli extents DEFINITIVI dopo il ridimensionamento
             Physics.SyncTransforms(); 
-            myExtents = myBox.bounds.extents; 
         }
 
-        // CASO 1: POSIZIONAMENTO ASSOLUTO (Stanza vuota o Muri)
+        // 2. PRE-ROTAZIONE
         if (string.Equals(objData.relation_type, "absolute", StringComparison.OrdinalIgnoreCase))
         {
-            if (objData.relation == "center") {
-                targetPos = Vector3.zero;
+            switch (objData.relation)
+            {
+                case "wall_AB": loadedObject.transform.rotation = Quaternion.Euler(0, -90, 0); break; 
+                case "wall_CD": loadedObject.transform.rotation = Quaternion.Euler(0, 90, 0); break;  
+                case "wall_AD": loadedObject.transform.rotation = Quaternion.Euler(0, 180, 0); break; 
+                case "wall_BC": loadedObject.transform.rotation = Quaternion.Euler(0, 0, 0); break;   
+                
+                // Rotazioni per gli angoli (guardano verso il centro)
+                case "corner_A": loadedObject.transform.rotation = Quaternion.Euler(0, 0, 0); break; 
+                case "corner_B": loadedObject.transform.rotation = Quaternion.Euler(0, -90, 0); break; 
+                case "corner_C": loadedObject.transform.rotation = Quaternion.Euler(0, 180, 0); break; 
+                case "corner_D": loadedObject.transform.rotation = Quaternion.Euler(0, 90, 0); break; 
             }
-            else if (objData.relation == "wall_AB") { // Muro Posteriore (+X)
-                targetPos = new Vector3(roomHalf - myExtents.x - wallInsetPad, 0, 0);
-            }
-            else if (objData.relation == "wall_CD") { // Muro Frontale (-X)
-                targetPos = new Vector3(-roomHalf + myExtents.x + wallInsetPad, 0, 0);
-            }
-            else if (objData.relation == "wall_AD") { // Muro Sinistro (+Z)
-                targetPos = new Vector3(0, 0, roomHalf - myExtents.z - wallInsetPad);
-            }
-            else if (objData.relation == "wall_BC") { // Muro Destro (-Z)
-                targetPos = new Vector3(0, 0, -roomHalf + myExtents.z + wallInsetPad);
-            }
-            else if (objData.relation == "corner_A") { // Incrocio AB + AD (+X, +Z)
-                targetPos = new Vector3(roomHalf - myExtents.x - wallInsetPad, 0, roomHalf - myExtents.z - wallInsetPad);
-            }
-            else if (objData.relation == "corner_B") { // Incrocio AB + BC (+X, -Z)
-                targetPos = new Vector3(roomHalf - myExtents.x - wallInsetPad, 0, -roomHalf + myExtents.z + wallInsetPad);
-            }
-            else if (objData.relation == "corner_C") { // Incrocio CD + BC (-X, -Z)
-                targetPos = new Vector3(-roomHalf + myExtents.x + wallInsetPad, 0, -roomHalf + myExtents.z + wallInsetPad);
-            }
-            else if (objData.relation == "corner_D") { // Incrocio CD + AD (-X, +Z)
-                targetPos = new Vector3(-roomHalf + myExtents.x + wallInsetPad, 0, roomHalf - myExtents.z - wallInsetPad);
+        }
+        else if (string.Equals(objData.relation_type, "relative", StringComparison.OrdinalIgnoreCase))
+        {
+            Transform targetObj = assetParent.Find(FormatName(objData.target));
+            if (targetObj != null && objData.relation != "above")
+            {
+                loadedObject.transform.rotation = targetObj.rotation;
             }
         }
 
-        // CASO 2: POSIZIONAMENTO RELATIVO (Rispetto ad arredi esistenti)
+        Physics.SyncTransforms(); 
+        if (myBox != null) myWorldExtents = myBox.bounds.extents;
+
+        // --- CALCOLO OFFSET ALTEZZA PIVOT ---
+        // Trova l'offset per poggiare perfettamente la base dell'oggetto senza compenetrare il piano
+        float bottomOffset = 0f;
+        if (myBox != null && geometryChild != null) {
+            float worldCenterY = geometryChild.TransformPoint(myBox.center).y;
+            float worldBottomY = worldCenterY - myWorldExtents.y;
+            bottomOffset = loadedObject.transform.position.y - worldBottomY; 
+        }
+
+        // Parametri universali per il "recinto" (default : pavimento)
+        float clampMinX = -roomHalf + myWorldExtents.x + wallInsetPad;
+        float clampMaxX = roomHalf - myWorldExtents.x - wallInsetPad;
+        float clampMinZ = -roomHalf + myWorldExtents.z + wallInsetPad;
+        float clampMaxZ = roomHalf - myWorldExtents.z - wallInsetPad;
+        
+        float spiralStep = 0.25f;
+        int spiralAttempts = 1500;
+        float finalY = ComputeYPosition(Vector3.zero, "floor", loadedObject); // Y base del pavimento
+        Transform objectToIgnore = null;
+
+        Vector3 targetPos = Vector3.zero;
+
+        // Logica di posizionamento basata sul tipo di relazione (assoluta o relativa)
+        if (string.Equals(objData.relation_type, "absolute", StringComparison.OrdinalIgnoreCase))
+        {
+            if (objData.relation == "center") targetPos = Vector3.zero;
+            else if (objData.relation == "wall_AB") targetPos = new Vector3(clampMaxX, 0, 0);
+            else if (objData.relation == "wall_CD") targetPos = new Vector3(clampMinX, 0, 0);
+            else if (objData.relation == "wall_AD") targetPos = new Vector3(0, 0, clampMaxZ);
+            else if (objData.relation == "wall_BC") targetPos = new Vector3(0, 0, clampMinZ);
+            
+            else if (objData.relation == "corner_A") targetPos = new Vector3(clampMaxX, 0, clampMaxZ);
+            else if (objData.relation == "corner_B") targetPos = new Vector3(clampMaxX, 0, clampMinZ);
+            else if (objData.relation == "corner_C") targetPos = new Vector3(clampMinX, 0, clampMinZ);
+            else if (objData.relation == "corner_D") targetPos = new Vector3(clampMinX, 0, clampMaxZ);
+        }
         else if (string.Equals(objData.relation_type, "relative", StringComparison.OrdinalIgnoreCase))
         {
             Transform targetObj = assetParent.Find(FormatName(objData.target));
@@ -415,87 +494,192 @@ public class ScenePlacer : MonoBehaviour
                 BoxCollider refBox = refGeom != null ? refGeom.GetComponent<BoxCollider>() : null;
                 Vector3 refExtents = refBox != null ? refBox.bounds.extents : Vector3.one * 0.5f;
 
-                // Calcolo del centro volumetrico reale nello spazio globale
-                Vector3 refPos;
-                if (refGeom != null && refBox != null)
+                if (objData.relation.ToLower() == "above" && refBox != null)
                 {
-                    refPos = refGeom.TransformPoint(refBox.center);
+                    Bounds objBounds = refBox.bounds;
+                    objectToIgnore = targetObj; // Ignora l'oggetto su cui si poggia per evitare false collisioni
+
+                    // Calcolo dei limiti di clamp per la spirale sopra la superficie d'appoggio
+                    clampMinX = objBounds.min.x + myWorldExtents.x;
+                    clampMaxX = objBounds.max.x - myWorldExtents.x;
+                    clampMinZ = objBounds.min.z + myWorldExtents.z;
+                    clampMaxZ = objBounds.max.z - myWorldExtents.z;
+
+                    // Fallback: se l'accessorio è più grande dell'oggetto, lo posiziona esattamente al centro
+                    if (clampMinX > clampMaxX) { float avg = (clampMinX + clampMaxX) / 2f; clampMinX = avg; clampMaxX = avg; }
+                    if (clampMinZ > clampMaxZ) { float avg = (clampMinZ + clampMaxZ) / 2f; clampMinZ = avg; clampMaxZ = avg; }
+
+                    // Altitudine matematica esatta (Tetto dell'oggetto + Offset del Pivot)
+                    finalY = objBounds.max.y + bottomOffset;
+                    
+                    spiralStep = 0.05f; 
+                    spiralAttempts = 500;
+
+                    // Posizione ideale di partenza: Centro dell'oggetto
+                    targetPos = new Vector3(objBounds.center.x, 0, objBounds.center.z);
                 }
                 else
                 {
-                    refPos = targetObj.position;
-                }
+                    // Logica a pavimento standard
+                    Vector3 refPos = (refGeom != null && refBox != null) ? refGeom.TransformPoint(refBox.center) : targetObj.position;
+                    refPos.y = 0;
 
-                // Proiezione complanare al pavimento
-                refPos.y = 0;
+                    float distX = refExtents.x + myWorldExtents.x + minSeparationXZ;
+                    float distZ = refExtents.z + myWorldExtents.z + minSeparationXZ;
 
-                float distX = refExtents.x + myExtents.x + minSeparationXZ;
-                float distZ = refExtents.z + myExtents.z + minSeparationXZ;
-
-                switch (objData.relation.ToLower())
-                {
-                    case "in_front_of": 
-                        targetPos = refPos + (targetObj.forward * distZ);
-                        break;
-                    case "behind": 
-                        targetPos = refPos - (targetObj.forward * distZ);
-                        break;
-                    case "to_the_left_of": 
-                        targetPos = refPos - (targetObj.right * distX);
-                        break;
-                    case "to_the_right_of": 
-                        targetPos = refPos + (targetObj.right * distX);
-                        break;
-                    case "above": 
-                        targetPos = new Vector3(refPos.x, refPos.y + (refExtents.y * 2) + offset, refPos.z);
-                        break;
-                    default:
-                        targetPos = refPos + (targetObj.forward * distZ);
-                        break;
+                    switch (objData.relation.ToLower())
+                    {
+                        case "in_front_of": targetPos = refPos + (targetObj.forward * distZ); break;
+                        case "behind": targetPos = refPos - (targetObj.forward * distZ); break;
+                        case "to_the_left_of": targetPos = refPos - (targetObj.right * distX); break;
+                        case "to_the_right_of": targetPos = refPos + (targetObj.right * distX); break;
+                        default: targetPos = refPos + (targetObj.forward * distZ); break;
+                    }
                 }
             }
-            else
-            {
-                Debug.LogWarning($"[NeuroSymbolic] Target '{objData.target}' non trovato! Posiziono al centro.");
-                targetPos = Vector3.zero;
-            }
         }
 
-        // Calcolo finale altezza Y 
-        string yMode = objData.relation == "above" ? "above" : "floor";
-        targetPos.y = ComputeYPosition(targetPos, yMode, loadedObject);
-
-        // --- SISTEMA FISICO FINALE: CLAMPING E SOLVER ---
-        if (objData.relation != "above") 
-        {
-            // Oggetti a pavimento: risolvi le compenetrazioni con gli altri mobili e fai clamp
-            targetPos = FindValidPosition(loadedObject, myBox, targetPos);
-        }
-        else 
-        {
-            // Oggetti su tavoli: Solo clamp ai bordi della stanza (se usassimo il solver scapperebbero dal tavolo!)
-            float maxX = roomHalf - myExtents.x - wallInsetPad;
-            float maxZ = roomHalf - myExtents.z - wallInsetPad;
-            targetPos.x = Mathf.Clamp(targetPos.x, -maxX, maxX);
-            targetPos.z = Mathf.Clamp(targetPos.z, -maxZ, maxZ);
-        }
-
-        // Applica la posizione finale sicura
+        // 5. APPLICAZIONE DEL SOLVER UNIVERSALE
+        targetPos.y = finalY; 
+        targetPos = FindValidPosition(loadedObject, myBox, targetPos, clampMinX, clampMaxX, clampMinZ, clampMaxZ, spiralStep, spiralAttempts, objectToIgnore);
+        
+        // Piazzamento dell'oggetto
         loadedObject.transform.position = targetPos;
         Physics.SyncTransforms();
+    }
 
-        // --- GESTIONE ROTAZIONE VERSO IL CENTRO (MURI) ---
-        if (string.Equals(objData.relation_type, "absolute", StringComparison.OrdinalIgnoreCase) && objData.relation.StartsWith("wall_"))
-        {
-            // Mantiene l'asse Y invariato per non inclinare l'oggetto verso il pavimento
-            Vector3 lookTarget = Vector3.zero;
-            lookTarget.y = loadedObject.transform.position.y;
+
+    // // NUOVO SOLVER COMPENETRAZIONI
+    // private Vector3 FindValidPosition(GameObject go, BoxCollider box, Vector3 intendedPos, Vector3 worldExtents)
+    // {
+    //     if (box == null) return intendedPos;
+        
+    //     Vector3 spiralPos = intendedPos;
+    //     var geometryChild = go.transform.Find("geometry_0");
+        
+    //     Vector3 localHalfExtents = Vector3.Scale(box.size, geometryChild.lossyScale) * 0.5f;
+        
+    //     int maxAttempts = 1500;  
+    //     float step = 0.25f;     
+        
+    //     Vector2[] dirs = { Vector2.right, Vector2.up, Vector2.left, Vector2.down };
+    //     int dirIdx = 0;
+    //     int stepLimit = 1;
+    //     int stepCount = 0;
+
+    //     float maxX = roomHalf - worldExtents.x - wallInsetPad;
+    //     float maxZ = roomHalf - worldExtents.z - wallInsetPad;
+
+    //     for (int i = 0; i < maxAttempts; i++)
+    //     {
+    //         // 1. Controlla se la posizione matematica attuale è fuori dai muri
+    //         bool isOutOfBounds = spiralPos.x < -maxX || spiralPos.x > maxX || spiralPos.z < -maxZ || spiralPos.z > maxZ;
+
+    //         // 2. Solo se è DENTRO la stanza, testa fisicamente le collisioni
+    //         if (!isOutOfBounds)
+    //         {
+    //             go.transform.position = spiralPos;
+    //             Physics.SyncTransforms();
+
+    //             Vector3 worldCenter = geometryChild.TransformPoint(box.center);
+    //             Collider[] hits = Physics.OverlapBox(worldCenter, localHalfExtents, geometryChild.rotation);
+                
+    //             bool isOverlapping = false;
+    //             foreach (var hit in hits)
+    //             {
+    //                 if (hit.transform.IsChildOf(assetParent) && !hit.transform.IsChildOf(go.transform))
+    //                 {
+    //                     isOverlapping = true;
+    //                     break; 
+    //                 }
+    //             }
+
+    //             // Spazio libero e dentro la stanza trovato
+    //             if (!isOverlapping) return spiralPos; 
+    //         }
+
+    //         // 3. Muovi la spirale (Continua a muoversi matematicamente anche se era finita oltre il muro)
+    //         spiralPos.x += dirs[dirIdx].x * step;
+    //         spiralPos.z += dirs[dirIdx].y * step;
             
-            // Ruota la mesh affinché la sua faccia frontale guardi il centro della stanza
-            loadedObject.transform.LookAt(lookTarget);
+    //         stepCount++;
+    //         if (stepCount >= stepLimit)
+    //         {
+    //             stepCount = 0;
+    //             dirIdx = (dirIdx + 1) % 4; 
+    //             if (dirIdx % 2 == 0) stepLimit++; 
+    //         }
+    //     }
+
+    //     Debug.LogWarning($"[Fallback] Spazio esaurito per '{go.name}'. Resta nella posizione originale forzata.");
+    //     intendedPos.x = Mathf.Clamp(intendedPos.x, -maxX, maxX);
+    //     intendedPos.z = Mathf.Clamp(intendedPos.z, -maxZ, maxZ);
+    //     return intendedPos;
+    // }
+
+    // NUOVO SOLVER COMPENETRAZIONI
+    private Vector3 FindValidPosition(GameObject go, BoxCollider box, Vector3 intendedPos, float minX, float maxX, float minZ, float maxZ, float step, int maxAttempts, Transform ignoreTarget)
+    {
+        if (box == null) return intendedPos;
+        
+        Vector3 spiralPos = intendedPos;
+        var geometryChild = go.transform.Find("geometry_0");
+        
+        Vector3 localHalfExtents = Vector3.Scale(box.size, geometryChild.lossyScale) * 0.5f;
+        
+        Vector2[] dirs = { Vector2.right, Vector2.up, Vector2.left, Vector2.down };
+        int dirIdx = 0;
+        int stepLimit = 1;
+        int stepCount = 0;
+
+        for (int i = 0; i < maxAttempts; i++)
+        {
+            // 1. Controlla se la posizione matematica è al di fuori del "recinto"
+            bool isOutOfBounds = spiralPos.x < minX || spiralPos.x > maxX || spiralPos.z < minZ || spiralPos.z > maxZ;
+
+            // 2. Solo se è dentro il "recinto", testa fisicamente le collisioni
+            if (!isOutOfBounds)
+            {
+                go.transform.position = spiralPos;
+                Physics.SyncTransforms();
+
+                Vector3 worldCenter = geometryChild.TransformPoint(box.center);
+                Collider[] hits = Physics.OverlapBox(worldCenter, localHalfExtents, geometryChild.rotation);
+                
+                bool isOverlapping = false;
+                foreach (var hit in hits)
+                {
+                    if (hit.transform.IsChildOf(assetParent) && !hit.transform.IsChildOf(go.transform))
+                    {
+                        if (ignoreTarget != null && hit.transform.IsChildOf(ignoreTarget))
+                            continue;
+
+                        isOverlapping = true;
+                        break; 
+                    }
+                }
+
+                if (!isOverlapping) return spiralPos; 
+            }
+
+            spiralPos.x += dirs[dirIdx].x * step;
+            spiralPos.z += dirs[dirIdx].y * step;
+            
+            stepCount++;
+            if (stepCount >= stepLimit)
+            {
+                stepCount = 0;
+                dirIdx = (dirIdx + 1) % 4; 
+                if (dirIdx % 2 == 0) stepLimit++; 
+            }
         }
 
-        Debug.Log($"[TESI OK] Posizionato '{objectName}' con logica '{objData.relation}' alle coordinate finali sicure: {targetPos}");
+        Debug.LogWarning($"[Fallback] Spazio esaurito per '{go.name}'. Resta incastrato nei limiti massimi consentiti.");
+        
+        // Se non trova spazio, si schiaccia comunque dentro i limiti assegnati
+        intendedPos.x = Mathf.Clamp(intendedPos.x, minX, maxX);
+        intendedPos.z = Mathf.Clamp(intendedPos.z, minZ, maxZ);
+        return intendedPos;
     }
 
     private string FixUnbalancedBraces(string input)
@@ -633,99 +817,9 @@ public class ScenePlacer : MonoBehaviour
         }
     }*/
 
-    private Vector3 FindValidPosition(GameObject go, BoxCollider box, Vector3 intendedPos)
-    {
-        Vector3 testPos = intendedPos;
-        var geometryChild = go.transform.Find("geometry_0");
-        
-        // Estraiamo gli ingombri reali (metà dimensione del BoxCollider)
-        Vector3 halfExtents = Vector3.Scale(box.size, geometryChild.lossyScale) * 0.5f;
-        
-        int maxAttempts = 60;  // Limite massimo di scatti prima del fallback
-        float step = 0.15f;    // Spostamento di 15 cm a scatto
-
-        // Vettori per creare il movimento a spirale sul pavimento (X, Z)
-        Vector2[] dirs = { Vector2.right, Vector2.up, Vector2.left, Vector2.down };
-        int dirIdx = 0;
-        int stepLimit = 1;
-        int stepCount = 0;
-
-        for (int i = 0; i < maxAttempts; i++)
-        {
-            // 1. CLAMP: Forza le coordinate X e Z a rimanere dentro la stanza fisica
-            float maxX = roomHalf - halfExtents.x - wallInsetPad;
-            float maxZ = roomHalf - halfExtents.z - wallInsetPad;
-            testPos.x = Mathf.Clamp(testPos.x, -maxX, maxX);
-            testPos.z = Mathf.Clamp(testPos.z, -maxZ, maxZ);
-
-            // Sposta fisicamente l'oggetto per permettere al sensore di testare l'area
-            go.transform.position = testPos;
-            Physics.SyncTransforms();
-
-            // 2. SENSING: Controlliamo se in questo punto tocca altri mobili
-            Vector3 worldCenter = geometryChild.TransformPoint(box.center);
-            Collider[] hits = Physics.OverlapBox(worldCenter, halfExtents, geometryChild.rotation);
-            
-            bool isOverlapping = false;
-            foreach (var hit in hits)
-            {
-                // Ignora sé stesso, i muri (che gestiamo col clamp) e il pavimento
-                if (hit.transform != geometryChild && hit.transform != go.transform && 
-                    !hit.CompareTag("Floor") && !hit.name.Contains("Wall"))
-                {
-                    isOverlapping = true;
-                    break;
-                }
-            }
-
-            // Se non tocca nulla, lo spazio è perfettamente valido
-            if (!isOverlapping) return testPos;
-
-            // 3. SPIRAL MOVE: Muoviamoci lungo il pattern a spirale per il prossimo tentativo
-            testPos.x += dirs[dirIdx].x * step;
-            testPos.z += dirs[dirIdx].y * step;
-            
-            stepCount++;
-            if (stepCount >= stepLimit)
-            {
-                stepCount = 0;
-                dirIdx = (dirIdx + 1) % 4; // Cambia direzione di 90 gradi
-                if (dirIdx % 2 == 0) stepLimit++; // Ogni mezzo giro, allarga il raggio della spirale
-            }
-        }
-
-        // 4. FALLBACK: Nessuno spazio libero trovato nei dintorni
-        Debug.LogWarning($"[Fallback] Spazio esaurito per '{go.name}'. Posizionato al centro.");
-        testPos.x = 0; 
-        testPos.z = 0;
-        return testPos;
-    }
-
-
-/*
-    // ---------- DATA MODELS ----------
+    // DATA MODEL
+    [System.Serializable]
     public class ObjectData
-    {
-        public string name;
-        public int rotation;
-        public PositionData position;
-        public float scale;
-    }
-
-    [System.Serializable]
-    public class PositionData
-    {
-        public float x;
-        public string y;
-        public float z;
-        public string wall_side;
-        public string anchor;
-    }
-*/
-
-    //DATA MODEL AGGIORNATO
-    [System.Serializable]
-    public class NeuroSymbolicObjectData
     {
         public string name;
         public string relation_type;

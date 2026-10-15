@@ -28,7 +28,18 @@ public class LLMPlacer : MonoBehaviour
     public Button refineButton;
     public Button undoButton;
 
-    public int id;
+    //public int id;
+
+    public enum PlacementState
+    {
+        Phase1_FloorGeneration,
+        Phase1_FloorPlacement,
+        Phase2_AccessoryGeneration,
+        Phase2_AccessoryPlacement,
+        Done
+    }
+
+    public PlacementState currentState = PlacementState.Phase1_FloorGeneration;
 
     public GameObject grid;
 
@@ -37,8 +48,13 @@ public class LLMPlacer : MonoBehaviour
     private string basePath = "Assets/SessionItems/ObjectPictures";
     public GameObject instructions;
 
+    //public List<List<String>> groups = new List<List<string>>();
 
-    public List<List<String>> groups = new List<List<string>>();
+    // Coda locale per il piazzamento degli oggetti
+    private Queue<JObject> localQueue = new Queue<JObject>();
+
+    // Lista completa di tutti gli oggetti richiesti nella scena iniziale 
+    private List<string> requestedObjects = new List<string>();
     [HideInInspector] public bool lastActionWasRefine = false;
 
     SceneData sceneData;
@@ -82,7 +98,7 @@ public class LLMPlacer : MonoBehaviour
 
     private void Start()
     {
-        id = 0;
+        // id = 0;
         refineButton.gameObject.SetActive(false);
         grid.SetActive(false);
         LoadLatestObjectData();
@@ -112,6 +128,41 @@ public class LLMPlacer : MonoBehaviour
 
     public void PlaceButton()
     {
+        lastActionWasRefine = false;
+
+        switch (currentState)
+        {
+            case PlacementState.Phase1_FloorGeneration:
+                debug_info.text = "Thinking... Generating Floor Layout.";
+                // Innesca la prima chiamata API per il solo pavimento
+                StartCoroutine(GenerateLayoutPhase("floor"));
+                break;
+            
+            case PlacementState.Phase1_FloorPlacement:
+                // Piazza il prossimo mobile dalla coda
+                PlaceNextFromQueue();
+                break;
+
+            case PlacementState.Phase2_AccessoryGeneration:
+                debug_info.text = "Thinking... Generating Accessories Layout.";
+                // Innesca la seconda chiamata API per i soli accessori
+                StartCoroutine(GenerateLayoutPhase("accessory"));
+                break;
+
+            case PlacementState.Phase2_AccessoryPlacement:
+                // Nessuna chiamata API: piazza il prossimo accessorio dalla coda
+                PlaceNextFromQueue();
+                break;
+
+            case PlacementState.Done:
+                debug_info.text = "All objects have been placed!";
+                Debug.Log("Generation complete.");
+                break;
+        }
+    }
+
+    /*public void PlaceButton()
+    {
         debug_info.text = "Placing objects, please wait...";
         lastActionWasRefine = false;
 
@@ -121,7 +172,9 @@ public class LLMPlacer : MonoBehaviour
             StartCoroutine(PlaceObjects(groups[id]));
         else
             Debug.LogWarning("no more groups!");
-    }
+    }*/
+
+
 
     public void RefineButton()
     {
@@ -156,6 +209,7 @@ public class LLMPlacer : MonoBehaviour
 
     private void OnUndoPressed()
     {
+        /*
         // Check if last action was NOT a refinement
         if (!lastActionWasRefine)
         {
@@ -163,6 +217,7 @@ public class LLMPlacer : MonoBehaviour
             if (id > 0)
                 id--;
         }
+        */
 
         // Prepare paths
         string aaaJsonPath = Path.Combine(positionPath, "aaa.json");
@@ -235,6 +290,24 @@ public class LLMPlacer : MonoBehaviour
             scaleJson = File.ReadAllText(scalePath);
 
         sceneData = JsonUtility.FromJson<SceneData>(objectJson);
+
+        requestedObjects.Clear();
+        
+        // Inserisce ogni oggetto nella lista in base alla quantità specificata
+        if (sceneData != null && sceneData.objects != null)
+        {
+            foreach (var obj in sceneData.objects)
+            {
+                for (int i = 0; i < obj.quantity; i++)
+                {
+                    requestedObjects.Add(obj.name);
+                }
+            }
+        }
+        else
+        {
+            Debug.LogWarning("Nessun oggetto trovato nel file JSON iniziale.");
+        }
     }
 
     private void DeleteJson()
@@ -270,7 +343,7 @@ public class LLMPlacer : MonoBehaviour
         return ConvertImageToBase64(files[0]);
     }
 
-    IEnumerator ClassifyObjects()
+    /*IEnumerator ClassifyObjects()
     {
         string systemPrompt = @"
             You are a 3D artist and scene composer specialist.
@@ -337,7 +410,7 @@ public class LLMPlacer : MonoBehaviour
             Debug.LogError(req.downloadHandler.text);
         }
     }
-
+*/
 
     string GetLatestFolder(string rootPath)
     {
@@ -403,7 +476,7 @@ public class LLMPlacer : MonoBehaviour
         string output = "[" + string.Join(", ", group.Select(item => $"\"{item.Replace(" ", "_")}\"")) + "]";
         return output;
     }
-    public IEnumerator PlaceObjects(List<string> group)
+    /*public IEnumerator PlaceObjects(List<string> group)
     {
         // --- BACKUP aaa.json to history subfolder ---
         string aaaJsonPath = Path.Combine(positionPath, "aaa.json");
@@ -429,110 +502,30 @@ public class LLMPlacer : MonoBehaviour
             currentScene = File.ReadAllText(positionPath + "/aaa.json");
         }       
 
-        /*string systemPrompt = $@"
-            You are a 3D scene designer and composer specialist. 
-            TASK: You will receive a description of a 3D scene, and an object to place within it, the current state of the object positioned and a set of measures. For each object, you must determine a plausible 3D position and rotation, ensuring that the layout is realistic, visually appealing, and consistent with the scene description.
-
-            You will receive a picture of the current state of the room to help you orientate. The floor coordinate system is defined by two labeled axes: X (blue), and Z (red).
-
-            Your goal is to make the scene more realistic, well-arranged, and consistent with both the request and the visual layout. You must apply spatial reasoning: verify placements, rotations, overlaps, and relationships (e.g., chairs facing tables).
-            Please note that the scene title is not an object to place. Please state your reasoning steps!            
-
-            {gridDescription}
-
-            OUTPUT FORMAT: The final part of the output MUST end with a valid JSON structure like the following:
-            
-            {{ "" unique object name "": 
-                  {{ ""name"": ""[exact object name with no numbers]"", 
-                    ""rotation"": 0, 
-                    ""position"": {{ ""x"": 1, ""y"": ""floor"", ""z"": 5 }},
-                    ""scale"": [scale value]
-                   }}, 
-
-             "" unique object name "": 
-                  {{ ""name"": ""[exact object name with no numbers]"", 
-                    ""rotation"": 0, 
-                    ""position"": {{ ""x"": 1, ""y"": ""floor"", ""z"": 5 }}, 
-                    ""scale"": [scale value]
-                   }}, 
-                ...
-            }}
-            
-            OUTPUT: return ONLY the entries for the listed objects. 
-            Do NOT include or modify any other object already in the room.
-            Keep names EXACTLY as given (underscores preserved). Please always return the complete configuration of the room!!!
-;
-            ";
-
-        string userPrompt = @$"Room description is: {sceneData.scene_description}
-
-            Object to place are: {PrintGroup(group)},
-
-            The current state of the room is: {currentScene}
-
-            The scaling values in which to search are: {scaleJson}. Please look here only for the new objects.";*/
-
-            
         // 1. Il nuovo System Prompt Semantico (senza coordinate X,Y,Z)    
         string systemPrompt = @"You are an AI Interior Designer. Analyze the top-down 2D room image and output the spatial placement for the new object(s).
 
         --- CORE CONSTRAINTS ---
         1. VISUAL REALITY ONLY: Look ONLY at the physical objects in the image. Ignore shadows and grid lines. CRITICAL: Built-in parts of furniture (like pillows already on a sofa) are NOT separate objects and do not occupy adjacent floor space. 
         2. NO HALLUCINATIONS: Do not target or reference any object that is not explicitly visible in the image or listed in the prompt.
-        3. EXACT NAMES: The ""name"" key in JSON must exactly match the requested object. No math, no coordinates.
 
         --- SPATIAL MAPPING (CRITICAL) ---
         The image represents a top-down view of the room. Use this EXACT mapping for the room's edges:
-        - TOP edge of the image = ""wall_AD""
-        - BOTTOM edge of the image = ""wall_BC""
-        - RIGHT edge of the image = ""wall_AB""
-        - LEFT edge of the image = ""wall_CD""
-        - CORNERS: Top-Right is ""corner_A"", Bottom-Right is ""corner_B"", Bottom-Left is ""corner_C"", Top-Left is ""corner_D"".
+        - TOP edge of the image = wall_AD
+        - BOTTOM edge of the image = wall_BC
+        - RIGHT edge of the image = wall_AB
+        - LEFT edge of the image = wall_CD
+        - CORNERS: Top-Right is corner_A, Bottom-Right is corner_B, Bottom-Left is corner_C, Top-Left is corner_D.
 
         --- PLACEMENT LOGIC ---
         - ABSOLUTE PLACEMENT: Use to place items against perimetral walls or empty room zones.
         - RELATIVE PLACEMENT: Use to place items near or on existing furniture.
-        - SECONDARY FURNITURE: Low tables MUST be relative and ""in_front_of"" seating furniture.
+        - SECONDARY FURNITURE: Low tables MUST be relative and in_front_of seating furniture.
         - WALL ASSETS: Large electronics MUST be absolute against a wall facing the room center.
-
-        --- STRICT ALLOWED VOCABULARY ---
-        - ""relation_type"": ""absolute"" OR ""relative""
-        - ""relation"":
-            -> IF absolute: ""center"", ""wall_AB"", ""wall_BC"", ""wall_CD"", ""wall_AD"", ""corner_A"", ""corner_B"", ""corner_C"", ""corner_D""
-            -> IF relative & category is ""furniture"": ""in_front_of"", ""behind"", ""to_the_left_of"", ""to_the_right_of""
-            -> IF relative & category is ""accessory"": MUST BE ""above""
-        - ""scale"": ""small"", ""medium"", ""large"" (NEVER NUMBERS)
-        - ""placement"":
-            -> IF category is ""furniture"": MUST BE ""floor""
-            -> IF category is ""accessory"": MUST BE ""tabletop""
-        - ""category"": ""furniture"" OR ""accessory""
-
-        --- OUTPUT FORMAT ---
-        You MUST structure your reasoning strictly following this template for EVERY object, followed by the JSON block.
-
-        <thought_process>
-        [Object Name 1]
-        - Category: (Structural items like Sofas, Tables, Heaters are 'furniture'. Small decor/food like Sushi, Vases, Plants are 'accessory') -> [furniture OR accessory]
-        - Occupancy Check: (Look at the desired target. Is it already occupied by another item in this generation step? Yes/No) -> [Yes/No]
-        - Target Selection: (If Occupancy Check is Yes, choose a DIFFERENT empty target. Max 1 accessory per small table) -> [Target Name]
-        - Relation: (Direction from vocabulary. If target is a wall with existing furniture, route as 'relative' to that furniture instead) -> [relation]
-        
-        [Object Name 2]
-        ... (repeat the 4 points above for all requested objects)
-        </thought_process>
-
-        {
-            ""[OBJECT_NAME_1]"": {
-                ""name"": ""[OBJECT_NAME_1]"",
-                ""relation_type"": ""absolute OR relative"",
-                ""relation"": ""CHOOSE FROM STRICT VOCABULARY"",
-                ""target"": ""room OR [ExistingObjectName]"",
-                ""scale"": ""small OR medium OR large"",
-                ""placement"": ""floor OR tabletop"",
-                ""category"": ""furniture OR accessory""
-            }
-            // ... REPEAT the exact structure above for EVERY object requested. Do not leave any object out!
-        }";
+        - ANTI-ANCHORING BIAS: Vary the targets! Do NOT anchor every object to the same piece of furniture (e.g. do not attach everything to the Sofa).
+        - CATEGORY FIX: Analyze each object individually. Small items like boxes or vases MUST be classified as 'accessory', NEVER as 'furniture'.
+        - PLACEMENT FIX: Do NOT place tabletop accessories on the 'floor'. They MUST use 'tabletop'.
+        - NO PARADOXES: Avoid circular dependencies (e.g., Object A relative to B, and B relative to A).";
         
         // Se siamo al Turno 0 (primo gruppo), la stanza deve essere trattata come vuota
         string existingTargets = (id == 0 || string.IsNullOrEmpty(currentScene)) 
@@ -617,8 +610,166 @@ public class LLMPlacer : MonoBehaviour
         }
 
     }
+    */
 
-    string ExtractJsonBlock(string response)
+    IEnumerator GenerateLayoutPhase(string phaseType)
+    {
+        // Legge cosa c'è attualmente nella stanza
+        string currentScene = File.Exists(positionPath + "/aaa.json") ? File.ReadAllText(positionPath + "/aaa.json") : "";
+        string existingTargets = string.IsNullOrEmpty(currentScene) ? "NONE (Empty room)" : currentScene;
+
+        string systemPrompt;
+        string userPrompt;
+
+        // Filtri Semantici: in base alla fase, il prompt cambia
+        if (phaseType == "floor")
+        {
+            // FASE 1: SOLO PAVIMENTO
+            systemPrompt = @"You are an AI Interior Designer. You receive a list of objects.
+            YOUR TASK: Filter the list. Process ONLY the heavy furniture that rests directly on the floor. 
+            IGNORE all small tabletop accessories for now.
+
+            RULES FOR FLOOR ITEMS:
+            - relation_type MUST be 'absolute' or 'relative'.
+            - If absolute, target MUST be 'room' and relation MUST be a wall or corner
+            - If relative, target MUST be an existing object.
+            - placement MUST be 'floor'.
+            - category MUST be 'furniture'.";
+
+            userPrompt = $@"Room theme: {sceneData.scene_name}
+            Room description: {sceneData.scene_description}
+            Visual style: {sceneData.visual_style}
+            All requested objects: {PrintList(requestedObjects)}.
+            Extract and position ONLY the floor furniture. Leave accessories out.";
+        }
+        else
+        {
+            // FASE 2: SOLO ACCESSORI
+            systemPrompt = @"You are an AI Interior Designer. You receive a list of objects and the current room layout.
+            YOUR TASK: Filter the list. Process ONLY the small tabletop accessories. 
+            IGNORE floor furniture.
+
+            RULES FOR ACCESSORIES:
+            - relation_type MUST be 'relative'.
+            - relation MUST be 'above'.
+            - target MUST be the exact name of a flat furniture piece already in the room.
+            - placement MUST be 'tabletop'.
+            - category MUST be 'accessory'.";
+
+            userPrompt = $@"Room theme: {sceneData.scene_name}
+            Room description: {sceneData.scene_description}
+            Visual style: {sceneData.visual_style}
+            All requested objects: {PrintList(requestedObjects)}.
+            Existing surfaces in the room: {existingTargets}.
+            Extract and position ONLY the accessories, placing them 'above' existing surfaces.";
+        }
+
+        // Prepara la foto e il payload per Python
+        string gridImage = LoadRecentScreenshot();
+        string jsonPayload = JsonUtility.ToJson(new RequestDataImage
+        {
+            system_prompt = systemPrompt,
+            user_prompt = userPrompt,
+            image_string = gridImage
+        });
+
+        // Invia la chiamata alla rotta /generate_position
+        UnityWebRequest req = new UnityWebRequest("http://localhost:5000/generate_position", "POST");
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
+        req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+        req.downloadHandler = new DownloadHandlerBuffer();
+        req.SetRequestHeader("Content-Type", "application/json");
+
+        yield return req.SendWebRequest();
+
+        if (req.result == UnityWebRequest.Result.Success)
+        {
+            // Ricezione e Gestione della Coda
+            LLMAddObjectResponse response = JsonConvert.DeserializeObject<LLMAddObjectResponse>(req.downloadHandler.text);
+            string extractedJson = SanitizeJson(ExtractJsonBlock(response.response));
+
+            if (!string.IsNullOrEmpty(extractedJson))
+            {
+                // Suddivisione della lista ricevuta in un JArray
+                //JArray generatedObjects = JArray.Parse(extractedJson);
+                
+                JObject responseObj = JObject.Parse(extractedJson);
+                JArray generatedObjects = (JArray)responseObj["items"];
+
+                // Inserimento degli oggetti nella coda locale
+                foreach (JObject obj in generatedObjects)
+                {
+                    localQueue.Enqueue(obj);
+                }
+
+                // Aggiornamento stato attuale in base alla fase
+                if (phaseType == "floor") currentState = PlacementState.Phase1_FloorPlacement;
+                else currentState = PlacementState.Phase2_AccessoryPlacement;
+
+                PlaceNextFromQueue();
+            }
+            else
+            {
+                Debug.LogError("No valid JSON found in response.");
+            }
+        }
+        else
+        {
+            Debug.LogError("LLM Error: " + req.error);
+        }
+    }
+
+    // Supporto per stampare la lista pulita e formattata
+    private string PrintList(List<string> list)
+    {
+        if (list == null || list.Count == 0) return "[]";
+        return "[" + string.Join(", ", list.Select(item => $"\"{item.Replace(" ", "_")}\"")) + "]";
+    }
+
+    // Piazzamento degli oggetti presenti nella coda locale
+    private void PlaceNextFromQueue()
+    {
+        // Controllo di fine fase
+        if (localQueue.Count == 0)
+        {
+            if (currentState == PlacementState.Phase1_FloorPlacement)
+            {
+                currentState = PlacementState.Phase2_AccessoryGeneration;
+                debug_info.text = "Floor finished. Press to generate accessories.";
+            }
+            else if (currentState == PlacementState.Phase2_AccessoryPlacement)
+            {
+                currentState = PlacementState.Done;
+                debug_info.text = "All items placed!";
+            }
+            return;
+        }
+
+        // Estrazione del primo oggetto dalla coda
+        JObject nextObj = localQueue.Dequeue();
+        
+        // Assicura la corretta formattazione del nome (es. "Cozy Sofa" diventa "Cozy_Sofa")
+        string objName = nextObj["name"]?.ToString().Replace(" ", "_");
+
+        // Lettura del file aaa.json attuale (se non esiste, ne crea uno vuoto)
+        JObject aaaData = File.Exists(positionPath + "/aaa.json")
+            ? JObject.Parse(File.ReadAllText(positionPath + "/aaa.json"))
+            : new JObject();
+
+        // Aggiunta del nuovo oggetto al dizionario usando il nome come chiave
+        aaaData[objName] = nextObj;
+
+        // Salvataggio del file 
+        File.WriteAllText(positionPath + "/aaa.json", aaaData.ToString());
+        
+        // Avvio del piazzamento 
+        td.StartPlacing();
+        CaptureScreenshot();
+
+        debug_info.text = $"Placed {objName}. Press to place next.";
+    }
+
+    /*string ExtractJsonBlock(string response)
     {
         int firstBrace = response.IndexOf('{');
         int lastBrace = response.LastIndexOf('}');
@@ -631,6 +782,30 @@ public class LLMPlacer : MonoBehaviour
         }
 
         return null;
+    }*/
+
+    string ExtractJsonBlock(string response)
+    {
+        // Cerca la prima comparsa di { oppure [
+        int firstBrace = response.IndexOf('{');
+        int firstBracket = response.IndexOf('[');
+        int start = -1;
+
+        if (firstBrace >= 0 && firstBracket >= 0) start = Math.Min(firstBrace, firstBracket);
+        else if (firstBrace >= 0) start = firstBrace;
+        else if (firstBracket >= 0) start = firstBracket;
+
+        // Cerca l'ultima comparsa di } oppure ]
+        int lastBrace = response.LastIndexOf('}');
+        int lastBracket = response.LastIndexOf(']');
+        int end = Math.Max(lastBrace, lastBracket);
+
+        if (start >= 0 && end > start)
+        {
+            return response.Substring(start, end - start + 1);
+        }
+
+        return response;
     }
 
     public static string ConvertImageToBase64(string filePath)
@@ -813,7 +988,6 @@ public class LLMPlacer : MonoBehaviour
 
         yield return req.SendWebRequest();
 
-
         if (req.result == UnityWebRequest.Result.Success)
         {
             LLMAddObjectResponse response = JsonConvert.DeserializeObject<LLMAddObjectResponse>(req.downloadHandler.text);
@@ -858,7 +1032,7 @@ public class LLMPlacer : MonoBehaviour
 
     }
 
-    private string SanitizeJson(string s)
+    /*private string SanitizeJson(string s)
     {
         if (string.IsNullOrEmpty(s)) return s;
 
@@ -878,8 +1052,38 @@ public class LLMPlacer : MonoBehaviour
         int opens = s.Count(c => c == '{'), closes = s.Count(c => c == '}');
         if (opens > closes) s += new string('}', opens - closes);
 
+        Debug.Log($"[JSON PULITO INVIATO AL PARSER]:\n{s}");
+
         return s;
     }
-   
+   */
+
+   private string SanitizeJson(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+
+        // Togli code fences / markdown
+        s = s.Replace("\r", "");
+        
+        int firstBrace = s.IndexOf('{');
+        int firstBracket = s.IndexOf('[');
+        int start = -1;
+        
+        if (firstBrace >= 0 && firstBracket >= 0) start = Math.Min(firstBrace, firstBracket);
+        else if (firstBrace >= 0) start = firstBrace;
+        else if (firstBracket >= 0) start = firstBracket;
+
+        int end = Math.Max(s.LastIndexOf('}'), s.LastIndexOf(']'));
+
+        if (start >= 0 && end > start) 
+            s = s.Substring(start, end - start + 1);
+
+        // Rimuovi virgole finali prima di } o ]
+        s = System.Text.RegularExpressions.Regex.Replace(s, @",\s*(\}|\])", "$1");
+
+        Debug.Log($"[JSON PULITO INVIATO AL PARSER]:\n{s}");
+
+        return s;
+    }
 
 }
