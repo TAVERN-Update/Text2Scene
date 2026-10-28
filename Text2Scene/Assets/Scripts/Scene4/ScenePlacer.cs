@@ -19,6 +19,10 @@ public class ScenePlacer : MonoBehaviour
 
     public TMP_Text debug_info;
 
+    private List<string> unplacedObjects = new List<string>();
+    public IReadOnlyList<string> UnplacedObjects => unplacedObjects;
+    public bool LastPlacementCompleted { get; private set; } 
+
     // --- Placement params ---
     [Header("Scaling")]
     public float scaleValue = 1f; // moltiplicatore globale
@@ -39,34 +43,63 @@ public class ScenePlacer : MonoBehaviour
     // Footprint per distanza minima (usa raggio= max(hx,hz) del collider)
     class Footprint { public Vector2 pos; public float radius; }
 
+    // Raccoglie i limiti e i parametri della ricerca geometrica.
+    private struct SearchSettings
+    {
+        public float minX;
+        public float maxX;
+        public float minZ;
+        public float maxZ;
+        public float step;
+        public int maxAttempts;
+    }
+
+    [ContextMenu("Ricostruisci scena da aaa.json")]
     public void StartPlacing()
     {
-        assetParent = GameObject.Find("Asset")?.transform;
-        if (assetParent == null)
-        {
-            Debug.LogError("Nessun oggetto chiamato 'Asset' trovato nella scena.");
-            return;
+         // Azzera il riepilogo della ricostruzione precedente.
+        unplacedObjects.Clear();
+        LastPlacementCompleted = false; 
+
+        try
+        { 
+            assetParent = GameObject.Find("Asset")?.transform;
+
+            if (assetParent == null)
+            {
+                Debug.LogError("Nessun oggetto chiamato 'Asset' trovato nella scena.");
+                return;
+            }
+
+            foreach (Transform child in assetParent.Cast<Transform>().ToArray())
+                GameObject.DestroyImmediate(child.gameObject);
+
+            // Assicura colliders statici (floor e muri) per i raycast
+            EnsureStaticColliders();
+
+            basePath = Path.Combine(Application.dataPath, "SessionItems", "SceneJson");
+
+            jsonPath = Path.Combine(basePath, "aaa.json");
+            scalePath = Path.Combine(basePath, "calculated_uniform_scale.json");
+            modelsPath = LoadRecentFolder();
+
+            if (string.IsNullOrEmpty(modelsPath)) return;
+
+            if (!File.Exists(jsonPath))
+            {
+                Debug.LogError("aaa.json non trovato.");
+                return;
+            }
+
+            PlaceAllObjects();
+
+            // Tutte le richieste sono state elaborate, anche se alcune potrebbero non aver prodotto un posizionamento valido.
+            LastPlacementCompleted = true;
         }
-        foreach (Transform child in assetParent.Cast<Transform>().ToArray())
-            GameObject.DestroyImmediate(child.gameObject);
-
-        // Assicura colliders statici (floor e muri) per i raycast
-        EnsureStaticColliders();
-
-        basePath = Path.Combine(Application.dataPath, "SessionItems", "SceneJson");
-
-        jsonPath = Path.Combine(basePath, "aaa.json");
-        scalePath = Path.Combine(basePath, "calculated_uniform_scale.json");
-        modelsPath = LoadRecentFolder();
-        if (string.IsNullOrEmpty(modelsPath)) return;
-
-        if (!File.Exists(jsonPath))
+        catch (Exception ex)
         {
-            Debug.LogError("aaa.json non trovato.");
-            return;
+            Debug.LogError($"Ricostruzione della scena interrotta: {ex}");
         }
-
-        PlaceAllObjects();
     }
 
     void EnsureStaticColliders()
@@ -218,15 +251,36 @@ public class ScenePlacer : MonoBehaviour
         return y;
     }
 
+    // private void PlaceAllObjects()
+    // {
+    //     string jsonString = File.ReadAllText(jsonPath);
+    //     // 1. Deserializziamo usando il nuovo schema neuro-simbolico
+    //     var dict = JsonConvert.DeserializeObject<Dictionary<string, ObjectData>>(FixUnbalancedBraces(jsonString));
+
+    //     foreach (var kvp in dict)
+    //     {
+    //         if (!PlaceSingleObject(kvp.Value))
+    //             unplacedObjects.Add(kvp.Key);
+    //     }
+    // }
+
+    // [DIAGNOSTICA]
     private void PlaceAllObjects()
     {
         string jsonString = File.ReadAllText(jsonPath);
-        // 1. Deserializziamo usando il nuovo schema neuro-simbolico
-        var dict = JsonConvert.DeserializeObject<Dictionary<string, ObjectData>>(FixUnbalancedBraces(jsonString));
 
-        foreach (var kvp in dict)
+        var dict = JsonConvert.DeserializeObject<Dictionary<string, ObjectData>>(
+            FixUnbalancedBraces(jsonString));
+
+        // Prima gli oggetti vincolati a muri o angoli.
+        foreach (var kvp in dict.OrderByDescending(item =>
+            item.Value.relation_type == "absolute" &&
+            item.Value.relation != null &&
+            (item.Value.relation.StartsWith("wall_") ||
+            item.Value.relation.StartsWith("corner_"))))
         {
-            PlaceSingleObject(kvp.Value);
+            if (!PlaceSingleObject(kvp.Value))
+                unplacedObjects.Add(kvp.Key);
         }
     }
 
@@ -376,7 +430,7 @@ public class ScenePlacer : MonoBehaviour
     //     Physics.SyncTransforms();
     // }
 
-    private void PlaceSingleObject(ObjectData objData)
+    private bool PlaceSingleObject(ObjectData objData)
     {
         string objectName = FormatName(objData.name);
         string objectPath = Path.Combine(modelsPath, objectName + ".glb");
@@ -386,7 +440,7 @@ public class ScenePlacer : MonoBehaviour
             loadedObject = Importer.LoadFromFile(objectPath);
         } catch (System.Exception ex) {
             Debug.LogError($"Failed to load GLB file for '{objectName}': {ex.Message}");
-            return;
+            return false;
         }
 
         loadedObject.name = objectName;
@@ -468,6 +522,7 @@ public class ScenePlacer : MonoBehaviour
         int spiralAttempts = 1500;
         float finalY = ComputeYPosition(Vector3.zero, "floor", loadedObject); // Y base del pavimento
         Transform objectToIgnore = null;
+        Transform referenceTarget = null;
 
         Vector3 targetPos = Vector3.zero;
 
@@ -488,6 +543,7 @@ public class ScenePlacer : MonoBehaviour
         else if (string.Equals(objData.relation_type, "relative", StringComparison.OrdinalIgnoreCase))
         {
             Transform targetObj = assetParent.Find(FormatName(objData.target));
+            referenceTarget = targetObj;
             if (targetObj != null)
             {
                 var refGeom = targetObj.Find("geometry_0");
@@ -541,16 +597,42 @@ public class ScenePlacer : MonoBehaviour
 
         // 5. APPLICAZIONE DEL SOLVER UNIVERSALE
         targetPos.y = finalY; 
-        targetPos = FindValidPosition(loadedObject, myBox, targetPos, clampMinX, clampMaxX, clampMinZ, clampMaxZ, spiralStep, spiralAttempts, objectToIgnore);
-        
-        // Piazzamento dell'oggetto
-        loadedObject.transform.position = targetPos;
-        Physics.SyncTransforms();
+
+        string spatialRelation = null;
+
+        if (string.Equals(objData.relation_type, "absolute", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(objData.relation_type, "relative", StringComparison.OrdinalIgnoreCase))
+        {
+            spatialRelation = objData.relation;
+        }
+
+        SearchSettings searchSettings = new SearchSettings
+            {
+                minX = clampMinX,
+                maxX = clampMaxX,
+                minZ = clampMinZ,
+                maxZ = clampMaxZ,
+                step = spiralStep,
+                maxAttempts = spiralAttempts
+            };
+
+        bool positionFound = FindValidPosition(loadedObject, myBox, targetPos, searchSettings, objectToIgnore, spatialRelation, referenceTarget);
+
+        if (!positionFound)
+        {
+            loadedObject.SetActive(false);
+            Physics.SyncTransforms();
+
+            Debug.LogWarning($"Oggetto '{objectName}' non collocato: istanza disattivata.");
+
+            return false;
+        }
+
+        return true;
     }
 
-
-    // // NUOVO SOLVER COMPENETRAZIONI
-    // private Vector3 FindValidPosition(GameObject go, BoxCollider box, Vector3 intendedPos, Vector3 worldExtents)
+    // NUOVO SOLVER COMPENETRAZIONI
+    // private Vector3 FindValidPosition(GameObject go, BoxCollider box, Vector3 intendedPos, float minX, float maxX, float minZ, float maxZ, float step, int maxAttempts, Transform ignoreTarget)
     // {
     //     if (box == null) return intendedPos;
         
@@ -559,23 +641,17 @@ public class ScenePlacer : MonoBehaviour
         
     //     Vector3 localHalfExtents = Vector3.Scale(box.size, geometryChild.lossyScale) * 0.5f;
         
-    //     int maxAttempts = 1500;  
-    //     float step = 0.25f;     
-        
     //     Vector2[] dirs = { Vector2.right, Vector2.up, Vector2.left, Vector2.down };
     //     int dirIdx = 0;
     //     int stepLimit = 1;
     //     int stepCount = 0;
 
-    //     float maxX = roomHalf - worldExtents.x - wallInsetPad;
-    //     float maxZ = roomHalf - worldExtents.z - wallInsetPad;
-
     //     for (int i = 0; i < maxAttempts; i++)
     //     {
-    //         // 1. Controlla se la posizione matematica attuale è fuori dai muri
-    //         bool isOutOfBounds = spiralPos.x < -maxX || spiralPos.x > maxX || spiralPos.z < -maxZ || spiralPos.z > maxZ;
+    //         // 1. Controlla se la posizione matematica è al di fuori del "recinto"
+    //         bool isOutOfBounds = spiralPos.x < minX || spiralPos.x > maxX || spiralPos.z < minZ || spiralPos.z > maxZ;
 
-    //         // 2. Solo se è DENTRO la stanza, testa fisicamente le collisioni
+    //         // 2. Solo se è dentro il "recinto", testa fisicamente le collisioni
     //         if (!isOutOfBounds)
     //         {
     //             go.transform.position = spiralPos;
@@ -589,16 +665,17 @@ public class ScenePlacer : MonoBehaviour
     //             {
     //                 if (hit.transform.IsChildOf(assetParent) && !hit.transform.IsChildOf(go.transform))
     //                 {
+    //                     if (ignoreTarget != null && hit.transform.IsChildOf(ignoreTarget))
+    //                         continue;
+
     //                     isOverlapping = true;
     //                     break; 
     //                 }
     //             }
 
-    //             // Spazio libero e dentro la stanza trovato
     //             if (!isOverlapping) return spiralPos; 
     //         }
 
-    //         // 3. Muovi la spirale (Continua a muoversi matematicamente anche se era finita oltre il muro)
     //         spiralPos.x += dirs[dirIdx].x * step;
     //         spiralPos.z += dirs[dirIdx].y * step;
             
@@ -611,75 +688,283 @@ public class ScenePlacer : MonoBehaviour
     //         }
     //     }
 
-    //     Debug.LogWarning($"[Fallback] Spazio esaurito per '{go.name}'. Resta nella posizione originale forzata.");
-    //     intendedPos.x = Mathf.Clamp(intendedPos.x, -maxX, maxX);
-    //     intendedPos.z = Mathf.Clamp(intendedPos.z, -maxZ, maxZ);
+    //     Debug.LogWarning($"[Fallback] Spazio esaurito per '{go.name}'. Resta incastrato nei limiti massimi consentiti.");
+        
+    //     // Se non trova spazio, si schiaccia comunque dentro i limiti assegnati
+    //     intendedPos.x = Mathf.Clamp(intendedPos.x, minX, maxX);
+    //     intendedPos.z = Mathf.Clamp(intendedPos.z, minZ, maxZ);
     //     return intendedPos;
     // }
 
-    // NUOVO SOLVER COMPENETRAZIONI
-    private Vector3 FindValidPosition(GameObject go, BoxCollider box, Vector3 intendedPos, float minX, float maxX, float minZ, float maxZ, float step, int maxAttempts, Transform ignoreTarget)
+    private bool FindValidPosition(GameObject go, BoxCollider box, Vector3 intendedPos, SearchSettings settings, Transform ignoreTarget, string spatialRelation = null, Transform referenceTarget = null)
     {
-        if (box == null) return intendedPos;
-        
-        Vector3 spiralPos = intendedPos;
+        if (go == null)
+            return false;
+
         var geometryChild = go.transform.Find("geometry_0");
+
+        if (box == null || geometryChild == null)
+        {
+            Debug.LogWarning($"Impossibile verificare il posizionamento di '{go.name}': " + $"geometria o BoxCollider mancante.");
+
+            return false;
+        }
+
+        // Una relazione above richiede un supporto attivo con un collider utilizzabile.
+        if (spatialRelation == "above")
+        {
+            BoxCollider supportBox = referenceTarget != null
+                ? referenceTarget.Find("geometry_0")?.GetComponent<BoxCollider>()
+                : null;
+
+            if (supportBox == null || !supportBox.enabled || !supportBox.gameObject.activeInHierarchy)
+            {
+                Debug.LogWarning($"Supporto assente, non attivo o senza BoxCollider utilizzabile per '{go.name}'.");
+                return false;
+            }
+        }
         
-        Vector3 localHalfExtents = Vector3.Scale(box.size, geometryChild.lossyScale) * 0.5f;
-        
-        Vector2[] dirs = { Vector2.right, Vector2.up, Vector2.left, Vector2.down };
+        // Conserva la posa precedente alla ricerca.
+        Vector3 initialPosition = go.transform.position;
+        Quaternion initialRotation = go.transform.rotation;
+        Vector3 initialExtents = box.bounds.extents;
+
+        Vector3 spiralPos = intendedPos;
+
+        Vector2[] dirs = {Vector2.right, Vector2.up, Vector2.left, Vector2.down};
+
         int dirIdx = 0;
         int stepLimit = 1;
         int stepCount = 0;
 
-        for (int i = 0; i < maxAttempts; i++)
-        {
-            // 1. Controlla se la posizione matematica è al di fuori del "recinto"
-            bool isOutOfBounds = spiralPos.x < minX || spiralPos.x > maxX || spiralPos.z < minZ || spiralPos.z > maxZ;
+        // AB/CD: X resta fissa e si cerca lungo Z.
+        bool searchAlongZ = spatialRelation == "wall_AB" || spatialRelation == "wall_CD";
 
-            // 2. Solo se è dentro il "recinto", testa fisicamente le collisioni
+        // AD/BC: Z resta fissa e si cerca lungo X.
+        bool searchAlongX = spatialRelation == "wall_AD" || spatialRelation == "wall_BC";
+
+        bool isCorner = spatialRelation == "corner_A" || spatialRelation == "corner_B" || spatialRelation == "corner_C" || spatialRelation == "corner_D";
+
+        bool isHorizontalRelation = spatialRelation == "to_the_left_of" || spatialRelation == "to_the_right_of" || spatialRelation == "in_front_of" || spatialRelation == "behind";
+
+        Vector3 referenceCenter = Vector3.zero;
+        Vector3 relativeDirection = Vector3.zero;
+
+        if (isHorizontalRelation)
+        {
+            if (referenceTarget == null || !referenceTarget.gameObject.activeInHierarchy)
+            {
+                Debug.LogWarning($"Riferimento mancante o non attivo per '{go.name}'.");
+                return false;
+            }
+
+            var referenceBox = referenceTarget.Find("geometry_0")?.GetComponent<BoxCollider>();
+            referenceCenter = referenceBox != null ? referenceBox.bounds.center : referenceTarget.position;
+
+            relativeDirection = intendedPos - referenceCenter;
+            relativeDirection.y = 0f;
+            relativeDirection.Normalize();
+        }
+
+        // Solo per le relazioni orizzontali: prova prima quattro orientamenti vicino al punto richiesto, poi conserva la ricerca a spirale originale.
+        int rotationAttempts = (isHorizontalRelation && settings.maxAttempts > 0) ? 4 : 0;
+
+        // [DIAGNOSTICA]: raccoglie dati senza modificare la ricerca.
+        int checkedCandidates = 0;
+        int outOfBoundsCandidates = 0;
+        int collisionCandidates = 0;
+        int wrongDirectionCandidates = 0;
+        var blockingObjects = new HashSet<string>();
+        var checkedPositions = new List<string>();
+
+        for (int i = 0; i < settings.maxAttempts + rotationAttempts; i++)
+        {
+            SearchSettings candidateSettings = settings;
+            Vector3 candidatePos = spiralPos;
+
+            if (i < rotationAttempts)
+            {
+                go.transform.rotation = Quaternion.Euler(0f, i * 90f, 0f) * initialRotation;
+                Physics.SyncTransforms();
+
+                // Adatta i limiti della stanza al nuovo ingombro dell'oggetto.
+                Vector3 extentChange = box.bounds.extents - initialExtents;
+
+                candidateSettings.minX += extentChange.x;
+                candidateSettings.maxX -= extentChange.x;
+                candidateSettings.minZ += extentChange.z;
+                candidateSettings.maxZ -= extentChange.z;
+
+                // Aggiorna la distanza iniziale nello stesso modo del chiamante.
+                float distanceChange = (spatialRelation == "to_the_left_of" || spatialRelation == "to_the_right_of") ? extentChange.x : extentChange.z;
+                
+                candidatePos = intendedPos + relativeDirection * distanceChange;
+                candidatePos.x = Mathf.Clamp(candidatePos.x, candidateSettings.minX, candidateSettings.maxX);
+                candidatePos.z = Mathf.Clamp(candidatePos.z, candidateSettings.minZ, candidateSettings.maxZ);
+            }
+            else if (i == rotationAttempts && rotationAttempts > 0)
+            {
+                go.transform.rotation = initialRotation;
+                Physics.SyncTransforms();
+            }
+
+            if (searchAlongX || searchAlongZ)
+            {
+                // Prova: 0, +step, -step, +2*step, -2*step, ...
+                float displacement = (i + 1) / 2 * settings.step;
+
+                if (i % 2 == 0)
+                    displacement = -displacement;
+
+                spiralPos = intendedPos;
+
+                if (searchAlongZ)
+                    spiralPos.z += displacement;
+                else
+                    spiralPos.x += displacement;
+
+                candidatePos = spiralPos;
+            }
+
+            bool isOutOfBounds = candidatePos.x < candidateSettings.minX || 
+                                candidatePos.x > candidateSettings.maxX || 
+                                candidatePos.z < candidateSettings.minZ || 
+                                candidatePos.z > candidateSettings.maxZ;
+
+            
+
             if (!isOutOfBounds)
             {
-                go.transform.position = spiralPos;
+                // [DIAGNOSTICA]
+                checkedCandidates++;
+
+                go.transform.position = candidatePos;
                 Physics.SyncTransforms();
 
                 Vector3 worldCenter = geometryChild.TransformPoint(box.center);
+
+                // Controlla se la posizione rispetta la relazione relativa generata
+                bool respectsRelativeRelation = !isHorizontalRelation || Vector3.Dot(worldCenter - referenceCenter, relativeDirection) > 0.001f;
+
+                Vector3 localHalfExtents = Vector3.Scale(box.size, geometryChild.lossyScale) * 0.5f;
+
                 Collider[] hits = Physics.OverlapBox(worldCenter, localHalfExtents, geometryChild.rotation);
-                
+
                 bool isOverlapping = false;
+                // [DIAGNOSTICA]
+                string firstObstacle = "nessuno";
+
                 foreach (var hit in hits)
                 {
                     if (hit.transform.IsChildOf(assetParent) && !hit.transform.IsChildOf(go.transform))
                     {
-                        if (ignoreTarget != null && hit.transform.IsChildOf(ignoreTarget))
+                        if (ignoreTarget != null &&
+                            hit.transform.IsChildOf(ignoreTarget))
+                        {
                             continue;
+                        }
 
                         isOverlapping = true;
-                        break; 
+
+                        // [DIAGNOSTICA] Risale al nome dell'oggetto, evitando il generico "geometry_0".
+                        Transform obstacle = hit.transform;
+                        while (obstacle != assetParent &&
+                            obstacle.parent != null &&
+                            obstacle.parent != assetParent)
+                        {
+                            obstacle = obstacle.parent;
+                        }
+
+                        firstObstacle = obstacle.name;
+
+                        blockingObjects.Add(
+                            $"{firstObstacle}: centro={hit.bounds.center.ToString("F3")}, " +
+                            $"dimensioni={hit.bounds.size.ToString("F3")}");
+                        break;
                     }
                 }
 
-                if (!isOverlapping) return spiralPos; 
+                // [DIAGNOSTICA]
+                if (isOverlapping)
+                    collisionCandidates++;
+
+                if (!respectsRelativeRelation)
+                    wrongDirectionCandidates++;
+
+                // Conserva al massimo 25 dettagli per evitare un log troppo lungo.
+                if (checkedPositions.Count < 25)
+                {
+                    checkedPositions.Add(
+                        $"pivot={candidatePos.ToString("F3")}; " +
+                        $"centroCollider={worldCenter.ToString("F3")}; " +
+                        $"primoOstacolo={firstObstacle}; " +
+                        $"direzioneValida={respectsRelativeRelation}");
+                }
+                                    
+                // La posizione è già applicata: comunica il successo.
+                if (!isOverlapping && respectsRelativeRelation)
+                    return true;
+            } else // [DIAGNOSTICA]
+            {
+                outOfBoundsCandidates++;
             }
 
-            spiralPos.x += dirs[dirIdx].x * step;
-            spiralPos.z += dirs[dirIdx].y * step;
-            
+            // Le prove di rotazione non fanno avanzare la spirale.
+            if (i < rotationAttempts)
+                continue;
+
+            // Per le pareti, il prossimo candidato viene calcolato all'inizio del ciclo senza usare la spirale 2D.
+            if (searchAlongX || searchAlongZ)
+                continue;
+
+            // Per un angolo si verifica soltanto la posizione iniziale.
+            if(isCorner)
+                break;
+
+            spiralPos.x += dirs[dirIdx].x * settings.step;
+            spiralPos.z += dirs[dirIdx].y * settings.step;
+
             stepCount++;
+
             if (stepCount >= stepLimit)
             {
                 stepCount = 0;
-                dirIdx = (dirIdx + 1) % 4; 
-                if (dirIdx % 2 == 0) stepLimit++; 
+                dirIdx = (dirIdx + 1) % 4;
+
+                if (dirIdx % 2 == 0)
+                    stepLimit++;
             }
         }
 
-        Debug.LogWarning($"[Fallback] Spazio esaurito per '{go.name}'. Resta incastrato nei limiti massimi consentiti.");
-        
-        // Se non trova spazio, si schiaccia comunque dentro i limiti assegnati
-        intendedPos.x = Mathf.Clamp(intendedPos.x, minX, maxX);
-        intendedPos.z = Mathf.Clamp(intendedPos.z, minZ, maxZ);
-        return intendedPos;
+        // Nessun candidato accettato: ripristina la posa precedente.
+        go.transform.position = initialPosition;
+        go.transform.rotation = initialRotation;
+        Physics.SyncTransforms();
+
+        // if (isCorner)
+        // {
+        //     Debug.LogWarning(
+        //         $"Posizione nell'angolo '{spatialRelation}' non valida per '{go.name}'.");
+        // }
+        // else
+        // {
+        //     Debug.LogWarning($"Nessuna posizione valida trovata per '{go.name}' " +$"entro {settings.maxAttempts} tentativi.");
+        // }
+
+        // [DIAGNOSTICA]
+        string failureMessage = isCorner
+        ? $"Posizione nell'angolo '{spatialRelation}' non valida per '{go.name}'."
+        : $"Nessuna posizione valida trovata per '{go.name}' entro {settings.maxAttempts} tentativi.";
+
+        Debug.LogWarning(failureMessage + "\n" +
+        $"[Diagnostica posizionamento] Relazione={spatialRelation}; richiesto={intendedPos.ToString("F3")}; rotazione iniziale={go.transform.eulerAngles.ToString("F1")}\n" +
+        $"Collider ripristinato: centro={box.bounds.center.ToString("F3")}; dimensioni={box.bounds.size.ToString("F3")}; scostamento dal pivot={(box.bounds.center - go.transform.position).ToString("F3")}\n" +
+        $"Limiti iniziali: X=[{settings.minX:F3}, {settings.maxX:F3}]; Z=[{settings.minZ:F3}, {settings.maxZ:F3}]; passo={settings.step:F3}; roomHalf={roomHalf:F3}; scaleValue={scaleValue:F3}\n" +
+        $"Posizioni controllate={checkedCandidates}; fuori limiti={outOfBoundsCandidates}; con collisioni={collisionCandidates}; direzione non valida={wrongDirectionCandidates}\n" +
+        $"Primi ostacoli rilevati: {string.Join("; ", blockingObjects)}\n" +
+        $"Prime {checkedPositions.Count} posizioni controllate (massimo 25):\n{string.Join("\n", checkedPositions)}");
+
+        return false;
     }
 
     private string FixUnbalancedBraces(string input)

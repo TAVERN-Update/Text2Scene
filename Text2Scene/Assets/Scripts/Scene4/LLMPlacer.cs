@@ -155,8 +155,9 @@ public class LLMPlacer : MonoBehaviour
                 break;
 
             case PlacementState.Done:
-                debug_info.text = "All objects have been placed!";
-                Debug.Log("Generation complete.");
+                debug_info.text = GetPlacementStatusMessage("Placement queue finished. All processed objects were placed.");
+
+                Debug.Log(debug_info.text);
                 break;
         }
     }
@@ -612,11 +613,231 @@ public class LLMPlacer : MonoBehaviour
     }
     */
 
-    IEnumerator GenerateLayoutPhase(string phaseType)
+    // IEnumerator GenerateLayoutPhase(string phaseType)
+    // {
+    //     // Legge cosa c'è attualmente nella stanza
+    //     // string currentScene = File.Exists(positionPath + "/aaa.json") ? File.ReadAllText(positionPath + "/aaa.json") : "";
+    //     // string existingTargets = string.IsNullOrEmpty(currentScene) ? "NONE (Empty room)" : currentScene;
+
+    //     JObject currentObjects = File.Exists(positionPath + "/aaa.json") ? JObject.Parse(File.ReadAllText(positionPath + "/aaa.json")) : new JObject();
+
+    //     List<string> remainingObjects = requestedObjects.Select(name => name.Replace(" ", "_")).Where(name => currentObjects[name] == null).ToList();
+
+    //     JObject placedObjects = new JObject();
+    //     Transform placedAssets = GameObject.Find("Asset")?.transform;
+
+    //     foreach (var entry in currentObjects.Properties())
+    //     {
+    //         Transform instance = placedAssets?.Find(entry.Name);
+
+    //         if (instance != null && instance.gameObject.activeInHierarchy)
+    //             placedObjects[entry.Name] = entry.Value.DeepClone();
+    //     }
+
+    //     if (remainingObjects.Count == 0)
+    //     {
+    //         currentState = phaseType == "floor" ? PlacementState.Phase1_FloorPlacement : PlacementState.Phase2_AccessoryPlacement;
+    //         PlaceNextFromQueue();
+    //         yield break;
+    //     }
+
+    //     if (phaseType == "accessory" && placedObjects.Count == 0)
+    //     {
+    //         debug_info.text = "No placed objects available as supports. Check Unity Console.";
+    //         Debug.LogWarning("Nessun riferimento presente e attivo per la fase accessori.");
+    //         yield break;
+    //     }
+
+    //     string existingTargets = placedObjects.ToString();
+
+    //     string objectDescriptions = "";
+
+    //     foreach (var obj in sceneData.objects)
+    //     {
+    //         if (!remainingObjects.Contains(obj.name.Replace(" ", "_")))
+    //             continue;
+
+    //         objectDescriptions +=
+    //             $"- {obj.name.Replace(" ", "_")}: " +
+    //             $"{obj.description} {obj.visual_description}\n";
+    //     }
+
+    //     string systemPrompt;
+    //     string userPrompt;
+
+    //     // Filtri Semantici: in base alla fase, il prompt cambia
+    //     if (phaseType == "floor")
+    //     {
+    //         // FASE 1: SOLO PAVIMENTO
+    //         systemPrompt = @"YOUR TASK: Select and plan all objects that do not require another scene object as a supporting surface.
+    //         Leave out objects intended to rest on another object's surface.
+    //         A spatial relation to another object does not imply using it as a support.
+
+    //         ROOM MAPPING:
+    //         The image shows a top-down view of the room.
+    //         - TOP edge = wall_AD.
+    //         - BOTTOM edge = wall_BC.
+    //         - RIGHT edge = wall_AB.
+    //         - LEFT edge = wall_CD.
+    //         - Top-right corner = corner_A.
+    //         - Bottom-right corner = corner_B.
+    //         - Bottom-left corner = corner_C.
+    //         - Top-left corner = corner_D.
+
+    //         RULES FOR THIS PHASE:
+    //         - Opposite wall pairs: wall_AB / wall_CD and wall_AD / wall_BC.
+    //         - relation_type MUST be 'absolute' or 'relative'.
+    //         - If absolute, target MUST be 'room' and relation MUST be a wall or corner
+    //         - If relative, target MUST be an existing object or an object listed earlier in this response.
+    //         - placement MUST be 'floor'.
+    //         - category MUST be 'furniture'.
+            
+    //         Output only names from Objects to place. Existing scene objects are references only.";
+
+    //         userPrompt = $@"Room theme: {sceneData.scene_name}
+    //         Room description: {sceneData.scene_description}
+    //         Visual style: {sceneData.visual_style}
+    //         Objects to place: {PrintList(remainingObjects)}.
+    //         Objects descriptions: {objectDescriptions}
+    //         Select all objects that do not need another object as support. Leave out objects that require a supporting surface.";
+    //     }
+    //     else
+    //     {
+    //         // FASE 2: SOLO ACCESSORI
+    //         systemPrompt = @"You are an AI Interior Designer. You receive a list of objects and the current room layout.
+    //         YOUR TASK: Select and place objects intended to rest on surfaces of existing scene objects.
+    //         Use only the available reference objects as supports.
+    //         Use the object descriptions to guide functional relationships and placement. Respect the rules for the current phase and keep object names unchanged.
+
+    //         RULES FOR ACCESSORIES:
+    //         - relation_type MUST be 'relative'.
+    //         - relation MUST be 'above'.
+    //         - target MUST be the exact name of a flat furniture piece from the available reference objects.
+    //         - placement MUST be 'tabletop'.
+    //         - category MUST be 'accessory'.
+            
+    //         Output only names from Objects to place. Existing scene objects are references only.";
+
+    //         userPrompt = $@"Room theme: {sceneData.scene_name}
+    //         Room description: {sceneData.scene_description}
+    //         Visual style: {sceneData.visual_style}
+    //         Objects to place: {PrintList(remainingObjects)}.
+    //         Objects descriptions: {objectDescriptions}
+    //         Available reference scene objects: {existingTargets}.
+    //         Place the objects that require a supporting surface 'above' the available reference objects.";
+    //     }
+
+    //     Debug.Log($"[Placement prompt - {phaseType}]\n{userPrompt}");
+
+    //     // Prepara la foto e il payload per Python
+    //     string gridImage = LoadRecentScreenshot();
+    //     string jsonPayload = JsonUtility.ToJson(new RequestDataImage
+    //     {
+    //         system_prompt = systemPrompt,
+    //         user_prompt = userPrompt,
+    //         image_string = gridImage
+    //     });
+
+    //     // Invia la chiamata alla rotta /generate_position
+    //     UnityWebRequest req = new UnityWebRequest("http://localhost:5000/generate_position", "POST");
+    //     byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
+    //     req.uploadHandler = new UploadHandlerRaw(bodyRaw);
+    //     req.downloadHandler = new DownloadHandlerBuffer();
+    //     req.SetRequestHeader("Content-Type", "application/json");
+
+    //     yield return req.SendWebRequest();
+
+    //     if (req.result == UnityWebRequest.Result.Success)
+    //     {
+    //         // Ricezione e Gestione della Coda
+    //         LLMAddObjectResponse response = JsonConvert.DeserializeObject<LLMAddObjectResponse>(req.downloadHandler.text);
+    //         string extractedJson = SanitizeJson(ExtractJsonBlock(response.response));
+
+    //         if (!string.IsNullOrEmpty(extractedJson))
+    //         {
+    //             // Suddivisione della lista ricevuta in un JArray
+    //             //JArray generatedObjects = JArray.Parse(extractedJson);
+                
+    //             JObject responseObj = JObject.Parse(extractedJson);
+    //             JArray generatedObjects = (JArray)responseObj["items"];
+
+    //             // Verifica l'intero piano prima di inserire oggetti nella coda.
+    //             HashSet<string> batchNames = new HashSet<string>();
+
+    //             foreach (JObject obj in generatedObjects)
+    //             {
+    //                 string objName = obj["name"].ToString().Replace(" ", "_");
+    //                 string target = obj["target"].ToString().Replace(" ", "_");
+    //                 string relation = obj["relation"].ToString();
+    //                 bool isAbsolute = obj["relation_type"].ToString() == "absolute";
+    //                 bool absoluteRelation = relation == "center" || relation.StartsWith("wall_") || relation.StartsWith("corner_");
+
+    //                 bool validFloorRelation = isAbsolute 
+    //                     ? absoluteRelation && target == "room" 
+    //                     : ((!absoluteRelation) && (relation != "above") && (target != objName) && ((placedObjects[target] != null) || batchNames.Contains(target)));
+
+    //                 bool validPhase = phaseType == "floor"
+    //                     ? ((obj["category"].ToString() == "furniture") && (obj["placement"].ToString() == "floor") && validFloorRelation)
+    //                     : ((obj["category"].ToString() == "accessory") 
+    //                         && (obj["placement"].ToString() == "tabletop") 
+    //                         && (!isAbsolute) 
+    //                         && (relation == "above") 
+    //                         && placedObjects[target] != null);
+
+    //                 if (!remainingObjects.Contains(objName) || !validPhase || !batchNames.Add(objName))
+    //                 {
+    //                     debug_info.text = "Invalid layout for this phase. Check Unity Console and press to retry.";
+    //                     Debug.LogWarning($"Piano rifiutato nella fase '{phaseType}': oggetto '{objName}', relazione '{relation}', target '{target}'. Nome non ammesso, duplicato o vincoli della fase non rispettati.");
+    //                     yield break;
+    //                 }
+    //             }
+
+    //             if (batchNames.Count == 0
+    //                 || (phaseType == "accessory" && batchNames.Count != remainingObjects.Count))
+    //             {
+    //                 debug_info.text = "Invalid layout for this phase. Check Unity Console and press to retry.";
+    //                 Debug.LogWarning($"Piano vuoto o incompleto nella fase '{phaseType}': ricevuti {batchNames.Count} oggetti per {remainingObjects.Count} nomi ancora da elaborare.");
+    //                 yield break;
+    //             }
+
+    //             // Inserimento degli oggetti nella coda locale
+    //             foreach (JObject obj in generatedObjects)
+    //             {
+    //                 localQueue.Enqueue(obj);
+    //             }
+
+    //             // Aggiornamento stato attuale in base alla fase
+    //             if (phaseType == "floor") currentState = PlacementState.Phase1_FloorPlacement;
+    //             else currentState = PlacementState.Phase2_AccessoryPlacement;
+
+    //             PlaceNextFromQueue();
+    //         }
+    //         else
+    //         {
+    //             Debug.LogError("No valid JSON found in response.");
+    //         }
+    //     }
+    //     else
+    //     {
+    //         debug_info.text = "Layout generation failed. Check Unity Console and press to retry.";
+
+    //         Debug.LogError($"LLM Error: {req.error}\n{req.downloadHandler.text}");
+    //     }
+    // }
+
+        IEnumerator GenerateLayoutPhase(string phaseType)
     {
         // Legge cosa c'è attualmente nella stanza
         string currentScene = File.Exists(positionPath + "/aaa.json") ? File.ReadAllText(positionPath + "/aaa.json") : "";
         string existingTargets = string.IsNullOrEmpty(currentScene) ? "NONE (Empty room)" : currentScene;
+        string objectDescriptions = "";
+
+        foreach (var obj in sceneData.objects)
+        {
+            objectDescriptions +=
+                $"- {obj.name.Replace(" ", "_")}: " +
+                $"{obj.description} {obj.visual_description}\n";
+        }
 
         string systemPrompt;
         string userPrompt;
@@ -626,12 +847,27 @@ public class LLMPlacer : MonoBehaviour
         {
             // FASE 1: SOLO PAVIMENTO
             systemPrompt = @"You are an AI Interior Designer. You receive a list of objects.
-            YOUR TASK: Filter the list. Process ONLY the heavy furniture that rests directly on the floor. 
-            IGNORE all small tabletop accessories for now.
+            YOUR TASK: Filter the list. Process objects that do not require another scene object as support.
+            Exclude tabletop accessories.
+            Use the object descriptions to identify the required spatial and functional relationships.
+            Refer to ROOM MAPPING when planning the layout, ensuring that the chosen placements respect those relationships and form a coherent overall arrangement.
+            Respect the rules for the current phase and keep object names unchanged.
+
+            SUPPORT DEFINITIONS:
+            - The room floor and walls are part of the room, not other scene objects.
+            - 'floor' applies to objects that do not require a separate furniture item as physical support.
+            - 'tabletop' applies to objects that rest on a separate furniture item.
+            - Classify each object according to what supports it. Providing a surface for other objects does not make an object a tabletop accessory.
+
+            ROOM MAPPING:
+            - Image edges: TOP = wall_AD; BOTTOM = wall_BC; RIGHT = wall_AB; LEFT = wall_CD.
+            - In this rectangular room, opposite walls have no corner vertex in common. Walls sharing a corner vertex are adjacent, not opposite.
+            - OPPOSITE wall pairs: wall_AB - wall_CD; wall_AD - wall_BC.
+            - ADJACENT wall pairs: wall_AB - wall_AD; wall_AB - wall_BC; wall_CD - wall_AD; wall_CD - wall_BC.
 
             RULES FOR FLOOR ITEMS:
             - relation_type MUST be 'absolute' or 'relative'.
-            - If absolute, target MUST be 'room' and relation MUST be a wall or corner
+            - If absolute, target MUST be 'room' and relation MUST be 'center', a wall or a corner.
             - If relative, target MUST be an existing object.
             - placement MUST be 'floor'.
             - category MUST be 'furniture'.";
@@ -640,14 +876,38 @@ public class LLMPlacer : MonoBehaviour
             Room description: {sceneData.scene_description}
             Visual style: {sceneData.visual_style}
             All requested objects: {PrintList(requestedObjects)}.
-            Extract and position ONLY the floor furniture. Leave accessories out.";
+            Objects descriptions: {objectDescriptions}
+            Extract and position objects that do not require another scene object as support. Leave tabletop accessories out.";
         }
         else
         {
             // FASE 2: SOLO ACCESSORI
+
+            // Conserva solo gli oggetti realmente presenti e attivi in Unity.
+            JObject sceneObjects = string.IsNullOrEmpty(currentScene)
+                ? new JObject()
+                : JObject.Parse(currentScene);
+
+            JObject placedObjects = new JObject();
+            Transform assets = GameObject.Find("Asset")?.transform;
+
+            foreach (var entry in sceneObjects.Properties())
+            {
+                Transform instance = assets?.Find(entry.Name);
+
+                if (instance != null && instance.gameObject.activeInHierarchy)
+                    placedObjects[entry.Name] = entry.Value.DeepClone();
+            }
+
+            existingTargets = placedObjects.Count > 0
+                ? placedObjects.ToString()
+                : "NONE (No objects currently placed)";
+                
             systemPrompt = @"You are an AI Interior Designer. You receive a list of objects and the current room layout.
             YOUR TASK: Filter the list. Process ONLY the small tabletop accessories. 
             IGNORE floor furniture.
+            Use the object descriptions to guide functional relationships and placement. 
+            Respect the rules for the current phase and keep object names unchanged.
 
             RULES FOR ACCESSORIES:
             - relation_type MUST be 'relative'.
@@ -660,9 +920,12 @@ public class LLMPlacer : MonoBehaviour
             Room description: {sceneData.scene_description}
             Visual style: {sceneData.visual_style}
             All requested objects: {PrintList(requestedObjects)}.
-            Existing surfaces in the room: {existingTargets}.
+            Objects descriptions: {objectDescriptions}
+            Existing objects physically present in the room (use ONLY these as possible supports): {existingTargets}.
             Extract and position ONLY the accessories, placing them 'above' existing surfaces.";
         }
+
+        Debug.Log($"[Placement prompt - {phaseType}]\n{userPrompt}");
 
         // Prepara la foto e il payload per Python
         string gridImage = LoadRecentScreenshot();
@@ -715,15 +978,31 @@ public class LLMPlacer : MonoBehaviour
         }
         else
         {
-            Debug.LogError("LLM Error: " + req.error);
+            debug_info.text = "Generation failed. Press to try again.";
+            Debug.LogError($"LLM Error ({req.responseCode}): {req.error}\n{req.downloadHandler.text}");
         }
     }
+
+
 
     // Supporto per stampare la lista pulita e formattata
     private string PrintList(List<string> list)
     {
         if (list == null || list.Count == 0) return "[]";
         return "[" + string.Join(", ", list.Select(item => $"\"{item.Replace(" ", "_")}\"")) + "]";
+    }
+
+    // successMessage viene restituito solo se la ricostruzione è terminata e non risultano oggetti non collocati.
+    private string GetPlacementStatusMessage(string successMessage)
+    {
+        if (td == null || !td.LastPlacementCompleted)
+            return "Placement not completed. Check Unity Console.";
+
+        if (td.UnplacedObjects.Count > 0)
+            return "Placement incomplete. Not placed: "
+                + string.Join(", ", td.UnplacedObjects) + ".";
+
+        return successMessage;
     }
 
     // Piazzamento degli oggetti presenti nella coda locale
@@ -735,12 +1014,12 @@ public class LLMPlacer : MonoBehaviour
             if (currentState == PlacementState.Phase1_FloorPlacement)
             {
                 currentState = PlacementState.Phase2_AccessoryGeneration;
-                debug_info.text = "Floor finished. Press to generate accessories.";
+                debug_info.text = GetPlacementStatusMessage("Floor queue finished.") + " Press to generate accessories.";
             }
             else if (currentState == PlacementState.Phase2_AccessoryPlacement)
             {
                 currentState = PlacementState.Done;
-                debug_info.text = "All items placed!";
+                debug_info.text = GetPlacementStatusMessage("Placement queue finished. All processed objects were placed.");
             }
             return;
         }
@@ -752,9 +1031,16 @@ public class LLMPlacer : MonoBehaviour
         string objName = nextObj["name"]?.ToString().Replace(" ", "_");
 
         // Lettura del file aaa.json attuale (se non esiste, ne crea uno vuoto)
-        JObject aaaData = File.Exists(positionPath + "/aaa.json")
-            ? JObject.Parse(File.ReadAllText(positionPath + "/aaa.json"))
-            : new JObject();
+        JObject aaaData = File.Exists(positionPath + "/aaa.json") ? JObject.Parse(File.ReadAllText(positionPath + "/aaa.json")) : new JObject();
+
+        if (aaaData[objName] != null)
+        {
+            Debug.LogWarning(
+                $"Oggetto '{objName}' gia' elaborato: elemento della coda ignorato.");
+
+            debug_info.text = "Object already processed. Press to place next.";
+            return;
+        }
 
         // Aggiunta del nuovo oggetto al dizionario usando il nome come chiave
         aaaData[objName] = nextObj;
@@ -766,7 +1052,7 @@ public class LLMPlacer : MonoBehaviour
         td.StartPlacing();
         CaptureScreenshot();
 
-        debug_info.text = $"Placed {objName}. Press to place next.";
+        debug_info.text = GetPlacementStatusMessage($"Placed {objName}.") + " Press to place next.";
     }
 
     /*string ExtractJsonBlock(string response)
