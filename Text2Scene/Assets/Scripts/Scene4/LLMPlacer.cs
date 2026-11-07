@@ -9,7 +9,6 @@ using Newtonsoft.Json;
 using UnityEngine;
 using UnityEngine.Networking;
 using static AddObject;
-using UnityEditor;
 using TMPro;
 using UnityEngine.UI;
 using Newtonsoft.Json.Linq;
@@ -28,8 +27,6 @@ public class LLMPlacer : MonoBehaviour
     public Button refineButton;
     public Button undoButton;
 
-    //public int id;
-
     public enum PlacementState
     {
         Phase1_FloorGeneration,
@@ -44,16 +41,13 @@ public class LLMPlacer : MonoBehaviour
     public GameObject grid;
 
     private ScenePlacer td;
-    //public Button generateButton;
     private string basePath = "Assets/SessionItems/ObjectPictures";
     public GameObject instructions;
 
-    //public List<List<String>> groups = new List<List<string>>();
-
-    // Coda locale per il piazzamento degli oggetti
+    // Oggetti della fase corrente ancora da elaborare.
     private Queue<JObject> localQueue = new Queue<JObject>();
 
-    // Lista completa di tutti gli oggetti richiesti nella scena iniziale 
+    // Nomi degli oggetti richiesti, ripetuti secondo la quantità.
     private List<string> requestedObjects = new List<string>();
     [HideInInspector] public bool lastActionWasRefine = false;
 
@@ -90,15 +84,8 @@ public class LLMPlacer : MonoBehaviour
     - -90 => faces -X (toward DC segment).
     ";
 
-        /*
-        > SPACING & VALIDATION
-        - Positions are CONTINUOUS floats (2 decimals are enough).
-        - Keep a minimum center-to-center separation of 0.5 m in the (x, z) plane between distinct floor/wall items, unless ""above"".
-        - Always keep x and z within [-2, +2]. If ""wall"", project to the wall plane as specified.";*/
-
     private void Start()
     {
-        // id = 0;
         refineButton.gameObject.SetActive(false);
         grid.SetActive(false);
         LoadLatestObjectData();
@@ -134,23 +121,23 @@ public class LLMPlacer : MonoBehaviour
         {
             case PlacementState.Phase1_FloorGeneration:
                 debug_info.text = "Thinking... Generating Floor Layout.";
-                // Innesca la prima chiamata API per il solo pavimento
+                // Richiede al modello il piano dei mobili.
                 StartCoroutine(GenerateLayoutPhase("floor"));
                 break;
             
             case PlacementState.Phase1_FloorPlacement:
-                // Piazza il prossimo mobile dalla coda
+                // Elabora il prossimo mobile della coda locale.
                 PlaceNextFromQueue();
                 break;
 
             case PlacementState.Phase2_AccessoryGeneration:
                 debug_info.text = "Thinking... Generating Accessories Layout.";
-                // Innesca la seconda chiamata API per i soli accessori
+                // Richiede al modello il piano degli accessori.
                 StartCoroutine(GenerateLayoutPhase("accessory"));
                 break;
 
             case PlacementState.Phase2_AccessoryPlacement:
-                // Nessuna chiamata API: piazza il prossimo accessorio dalla coda
+                // Elabora il prossimo accessorio della coda locale.
                 PlaceNextFromQueue();
                 break;
 
@@ -161,21 +148,6 @@ public class LLMPlacer : MonoBehaviour
                 break;
         }
     }
-
-    /*public void PlaceButton()
-    {
-        debug_info.text = "Placing objects, please wait...";
-        lastActionWasRefine = false;
-
-        if (id == 0)
-            StartCoroutine(ClassifyObjects());
-        else if (id < groups.Count)
-            StartCoroutine(PlaceObjects(groups[id]));
-        else
-            Debug.LogWarning("no more groups!");
-    }*/
-
-
 
     public void RefineButton()
     {
@@ -210,16 +182,6 @@ public class LLMPlacer : MonoBehaviour
 
     private void OnUndoPressed()
     {
-        /*
-        // Check if last action was NOT a refinement
-        if (!lastActionWasRefine)
-        {
-            // Decrease id (but not below zero)
-            if (id > 0)
-                id--;
-        }
-        */
-
         // Prepare paths
         string aaaJsonPath = Path.Combine(positionPath, "aaa.json");
         string historyFolder = Path.Combine(positionPath, "history");
@@ -294,7 +256,7 @@ public class LLMPlacer : MonoBehaviour
 
         requestedObjects.Clear();
         
-        // Inserisce ogni oggetto nella lista in base alla quantità specificata
+        // Inserisce i nomi degli oggetti nell'elenco secondo la quantità richiesta.
         if (sceneData != null && sceneData.objects != null)
         {
             foreach (var obj in sceneData.objects)
@@ -343,75 +305,6 @@ public class LLMPlacer : MonoBehaviour
 
         return ConvertImageToBase64(files[0]);
     }
-
-    /*IEnumerator ClassifyObjects()
-    {
-        string systemPrompt = @"
-            You are a 3D artist and scene composer specialist.
-
-            You will receive a scene description and a set of object that has to be placed in such a 3D scene. Your task is to logically group those object into sets that have to be placed together (so they are in a ""coherence group"" like table and chair, desk and chair, plate and table and so on). 
-
-            If and object doesnt have to rely on any other object, put them in a singleton. Group together only the objects that you think should be related to each other when positioned into a 3D scene.Put each object as many times in the groups as it is indicated in their respective ""quantity"" attribute.
-
-            Explain your steps, and output a json in the following form:
-
-        {
-            ""group1"": [""Bed""],
-            ""group2"": [""Desk"", ""Gaming Chair"", ""Computer""],
-            ""group3"": [""Table"", ""Chair"", ""Chair""],
-            ""group4"": [""Fridge"", ""Oven"", ""Counter""],
-        }";
-
-        string userPrompt = "Group the following objects for the given scene:\n\n" + objectJson;
-
-
-        string jsonPayload = JsonUtility.ToJson(new RequestData
-        {
-            system_prompt = systemPrompt,
-            user_prompt = userPrompt
-        });
-
-
-
-        UnityWebRequest req = new UnityWebRequest("http://localhost:5000/scene_prompt", "POST");
-        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
-        req.uploadHandler = new UploadHandlerRaw(bodyRaw);
-        req.downloadHandler = new DownloadHandlerBuffer();
-        req.SetRequestHeader("Content-Type", "application/json");
-
-        yield return req.SendWebRequest();
-
-        if (req.result == UnityWebRequest.Result.Success)
-        {
-            LLMAddObjectResponse response = JsonUtility.FromJson<LLMAddObjectResponse>(req.downloadHandler.text);
-            Debug.Log("Groups: " + response.response);
-            string extractedJson = ExtractJsonBlock(response.response);
-
-            extractedJson = extractedJson.Replace("’", "'").Replace("‘", "'"); // fancy quotes -> standard
-            extractedJson = Regex.Replace(extractedJson, @"(?<!\\)\'", "\""); // single quotes -> double quotes, but not already escaped
-
-
-            if (!string.IsNullOrEmpty(extractedJson))
-            {
-                File.WriteAllText(Path.Combine(Application.dataPath, "SessionItems", "SceneJson", "groups.json"), extractedJson);
-                //Debug.Log("JSON: " + extractedJson);
-                var dict = JsonConvert.DeserializeObject<Dictionary<string, List<string>>>(extractedJson);
-                groups = dict.Values.ToList();
-                //Debug.Log("adijadwsiujf: " + PrintGroup(groups[0]));
-                StartCoroutine(PlaceObjects(groups[0]));
-            }
-            else
-            {
-                Debug.LogWarning("LLM response didn't contain a valid JSON block.");
-            }
-        }
-        else
-        {
-            Debug.LogError("Error from LLM: " + req.error);
-            Debug.LogError(req.downloadHandler.text);
-        }
-    }
-*/
 
     string GetLatestFolder(string rootPath)
     {
@@ -462,372 +355,10 @@ public class LLMPlacer : MonoBehaviour
         renderer.material.mainTexture = texture;
     }
 
-/*    private string PrintGroup(List<string> group)
+    // Richiede il piano per la fase indicata e avvia l'elaborazione della coda.
+    IEnumerator GenerateLayoutPhase(string phaseType)
     {
-        if (group == null) return null;
-        string output = "[" + string.Join(", ", group.Select(item => $"\"{item}\"")) + "]";
-        return output;
-    }
-*/
-    private string PrintGroup(List<string> group)
-    {
-        if (group == null) return null;
-        // Trasforma ogni spazio in underscore prima di inviarlo nel prompt!
-        // Es: "Cozy Sofa" diventa "Cozy_Sofa", "Wooden Coffee Table" diventa "Wooden_Coffee_Table"
-        string output = "[" + string.Join(", ", group.Select(item => $"\"{item.Replace(" ", "_")}\"")) + "]";
-        return output;
-    }
-    /*public IEnumerator PlaceObjects(List<string> group)
-    {
-        // --- BACKUP aaa.json to history subfolder ---
-        string aaaJsonPath = Path.Combine(positionPath, "aaa.json");
-        string historyFolder = Path.Combine(positionPath, "history");
-        if (File.Exists(aaaJsonPath))
-        {
-            if (!Directory.Exists(historyFolder))
-                Directory.CreateDirectory(historyFolder);
-
-            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string backupPath = Path.Combine(historyFolder, $"aaa_{timestamp}_history.json");
-            File.Copy(aaaJsonPath, backupPath, true);
-        }
-        // --- END BACKUP ---
-
-        string currentScene;
-        if (!File.Exists(positionPath + "/aaa.json"))
-        {
-            currentScene = "";
-        }
-        else
-        {
-            currentScene = File.ReadAllText(positionPath + "/aaa.json");
-        }       
-
-        // 1. Il nuovo System Prompt Semantico (senza coordinate X,Y,Z)    
-        string systemPrompt = @"You are an AI Interior Designer. Analyze the top-down 2D room image and output the spatial placement for the new object(s).
-
-        --- CORE CONSTRAINTS ---
-        1. VISUAL REALITY ONLY: Look ONLY at the physical objects in the image. Ignore shadows and grid lines. CRITICAL: Built-in parts of furniture (like pillows already on a sofa) are NOT separate objects and do not occupy adjacent floor space. 
-        2. NO HALLUCINATIONS: Do not target or reference any object that is not explicitly visible in the image or listed in the prompt.
-
-        --- SPATIAL MAPPING (CRITICAL) ---
-        The image represents a top-down view of the room. Use this EXACT mapping for the room's edges:
-        - TOP edge of the image = wall_AD
-        - BOTTOM edge of the image = wall_BC
-        - RIGHT edge of the image = wall_AB
-        - LEFT edge of the image = wall_CD
-        - CORNERS: Top-Right is corner_A, Bottom-Right is corner_B, Bottom-Left is corner_C, Top-Left is corner_D.
-
-        --- PLACEMENT LOGIC ---
-        - ABSOLUTE PLACEMENT: Use to place items against perimetral walls or empty room zones.
-        - RELATIVE PLACEMENT: Use to place items near or on existing furniture.
-        - SECONDARY FURNITURE: Low tables MUST be relative and in_front_of seating furniture.
-        - WALL ASSETS: Large electronics MUST be absolute against a wall facing the room center.
-        - ANTI-ANCHORING BIAS: Vary the targets! Do NOT anchor every object to the same piece of furniture (e.g. do not attach everything to the Sofa).
-        - CATEGORY FIX: Analyze each object individually. Small items like boxes or vases MUST be classified as 'accessory', NEVER as 'furniture'.
-        - PLACEMENT FIX: Do NOT place tabletop accessories on the 'floor'. They MUST use 'tabletop'.
-        - NO PARADOXES: Avoid circular dependencies (e.g., Object A relative to B, and B relative to A).";
-        
-        // Se siamo al Turno 0 (primo gruppo), la stanza deve essere trattata come vuota
-        string existingTargets = (id == 0 || string.IsNullOrEmpty(currentScene)) 
-            ? "NONE (The room is completely empty)" 
-            : currentScene;
-
-        // 2. Il nuovo User Prompt Pulito 
-        string userPrompt = $@"Room description: {sceneData.scene_description}
-        Existing objects ALREADY physically in the room (use ONLY these as targets): {existingTargets}
-        NEW objects to place logically in THIS turn: {PrintGroup(group)}.
-        Analyze the attached screenshot. If the room is empty, use absolute placement. If occupied, target an existing object.";
-
-        string gridImageBase64 = LoadRecentScreenshot();
-        string jsonPayload = JsonUtility.ToJson(new RequestDataImage
-        {
-            system_prompt = systemPrompt,
-            user_prompt = userPrompt,
-            image_string = gridImageBase64
-        });
-
-        Debug.Log(jsonPayload);
-
-        UnityWebRequest req = new UnityWebRequest("http://localhost:5000/generate_position", "POST");
-        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
-        req.uploadHandler = new UploadHandlerRaw(bodyRaw);
-        req.downloadHandler = new DownloadHandlerBuffer();
-        req.SetRequestHeader("Content-Type", "application/json");
-
-        yield return req.SendWebRequest();
-
-        if (req.result == UnityWebRequest.Result.Success)
-        {
-            LLMAddObjectResponse response = JsonConvert.DeserializeObject<LLMAddObjectResponse>(req.downloadHandler.text);
-
-
-            Debug.Log("********REASONING AND RESPONSE*********: \n" + response.response);
-            string extractedJson = ExtractJsonBlock(response.response);
-            extractedJson = SanitizeJson(extractedJson);
-
-            extractedJson = extractedJson.Replace("’", "'").Replace("‘", "'"); // fancy quotes -> standard
-            extractedJson = Regex.Replace(extractedJson, @"(?<!\\)\'", "\""); // single quotes -> double quotes, but not already escaped
-
-
-            if (!string.IsNullOrEmpty(extractedJson))
-            {
-                var newObjects = JsonConvert.DeserializeObject<Dictionary<string, object>>(extractedJson);
-
-                JObject aaaData = File.Exists(positionPath + "/aaa.json")
-                    ? JObject.Parse(File.ReadAllText(positionPath + "/aaa.json"))
-                    : new JObject();
-
-                var scaleData = JsonConvert.DeserializeObject<Dictionary<string, float>>(scaleJson);
-
-                foreach (var kv in newObjects)
-                {
-                    JObject objData = (JObject)kv.Value;
-
-                    //if (!objData.ContainsKey("scale") && scaleData.ContainsKey(kv.Key))
-                        //objData["scale"] = scaleData[kv.Key];
-
-                    aaaData[kv.Key] = objData;
-                }
-
-                File.WriteAllText(positionPath + "/aaa.json", aaaData.ToString());
-
-                id++;
-                refineButton.gameObject.SetActive(true);
-                lastActionWasRefine = false;
-                td.StartPlacing();
-                debug_info.text = "Operation done, you can continue!";
-                CaptureScreenshot();
-            }
-            else
-            {
-                Debug.LogWarning("LLM response didn't contain a valid JSON block.");
-            }
-        }
-        else
-        {
-            Debug.LogError("Error from LLM: " + req.error);
-            Debug.LogError(req.downloadHandler.text);
-        }
-
-    }
-    */
-
-    // IEnumerator GenerateLayoutPhase(string phaseType)
-    // {
-    //     // Legge cosa c'è attualmente nella stanza
-    //     // string currentScene = File.Exists(positionPath + "/aaa.json") ? File.ReadAllText(positionPath + "/aaa.json") : "";
-    //     // string existingTargets = string.IsNullOrEmpty(currentScene) ? "NONE (Empty room)" : currentScene;
-
-    //     JObject currentObjects = File.Exists(positionPath + "/aaa.json") ? JObject.Parse(File.ReadAllText(positionPath + "/aaa.json")) : new JObject();
-
-    //     List<string> remainingObjects = requestedObjects.Select(name => name.Replace(" ", "_")).Where(name => currentObjects[name] == null).ToList();
-
-    //     JObject placedObjects = new JObject();
-    //     Transform placedAssets = GameObject.Find("Asset")?.transform;
-
-    //     foreach (var entry in currentObjects.Properties())
-    //     {
-    //         Transform instance = placedAssets?.Find(entry.Name);
-
-    //         if (instance != null && instance.gameObject.activeInHierarchy)
-    //             placedObjects[entry.Name] = entry.Value.DeepClone();
-    //     }
-
-    //     if (remainingObjects.Count == 0)
-    //     {
-    //         currentState = phaseType == "floor" ? PlacementState.Phase1_FloorPlacement : PlacementState.Phase2_AccessoryPlacement;
-    //         PlaceNextFromQueue();
-    //         yield break;
-    //     }
-
-    //     if (phaseType == "accessory" && placedObjects.Count == 0)
-    //     {
-    //         debug_info.text = "No placed objects available as supports. Check Unity Console.";
-    //         Debug.LogWarning("Nessun riferimento presente e attivo per la fase accessori.");
-    //         yield break;
-    //     }
-
-    //     string existingTargets = placedObjects.ToString();
-
-    //     string objectDescriptions = "";
-
-    //     foreach (var obj in sceneData.objects)
-    //     {
-    //         if (!remainingObjects.Contains(obj.name.Replace(" ", "_")))
-    //             continue;
-
-    //         objectDescriptions +=
-    //             $"- {obj.name.Replace(" ", "_")}: " +
-    //             $"{obj.description} {obj.visual_description}\n";
-    //     }
-
-    //     string systemPrompt;
-    //     string userPrompt;
-
-    //     // Filtri Semantici: in base alla fase, il prompt cambia
-    //     if (phaseType == "floor")
-    //     {
-    //         // FASE 1: SOLO PAVIMENTO
-    //         systemPrompt = @"YOUR TASK: Select and plan all objects that do not require another scene object as a supporting surface.
-    //         Leave out objects intended to rest on another object's surface.
-    //         A spatial relation to another object does not imply using it as a support.
-
-    //         ROOM MAPPING:
-    //         The image shows a top-down view of the room.
-    //         - TOP edge = wall_AD.
-    //         - BOTTOM edge = wall_BC.
-    //         - RIGHT edge = wall_AB.
-    //         - LEFT edge = wall_CD.
-    //         - Top-right corner = corner_A.
-    //         - Bottom-right corner = corner_B.
-    //         - Bottom-left corner = corner_C.
-    //         - Top-left corner = corner_D.
-
-    //         RULES FOR THIS PHASE:
-    //         - Opposite wall pairs: wall_AB / wall_CD and wall_AD / wall_BC.
-    //         - relation_type MUST be 'absolute' or 'relative'.
-    //         - If absolute, target MUST be 'room' and relation MUST be a wall or corner
-    //         - If relative, target MUST be an existing object or an object listed earlier in this response.
-    //         - placement MUST be 'floor'.
-    //         - category MUST be 'furniture'.
-            
-    //         Output only names from Objects to place. Existing scene objects are references only.";
-
-    //         userPrompt = $@"Room theme: {sceneData.scene_name}
-    //         Room description: {sceneData.scene_description}
-    //         Visual style: {sceneData.visual_style}
-    //         Objects to place: {PrintList(remainingObjects)}.
-    //         Objects descriptions: {objectDescriptions}
-    //         Select all objects that do not need another object as support. Leave out objects that require a supporting surface.";
-    //     }
-    //     else
-    //     {
-    //         // FASE 2: SOLO ACCESSORI
-    //         systemPrompt = @"You are an AI Interior Designer. You receive a list of objects and the current room layout.
-    //         YOUR TASK: Select and place objects intended to rest on surfaces of existing scene objects.
-    //         Use only the available reference objects as supports.
-    //         Use the object descriptions to guide functional relationships and placement. Respect the rules for the current phase and keep object names unchanged.
-
-    //         RULES FOR ACCESSORIES:
-    //         - relation_type MUST be 'relative'.
-    //         - relation MUST be 'above'.
-    //         - target MUST be the exact name of a flat furniture piece from the available reference objects.
-    //         - placement MUST be 'tabletop'.
-    //         - category MUST be 'accessory'.
-            
-    //         Output only names from Objects to place. Existing scene objects are references only.";
-
-    //         userPrompt = $@"Room theme: {sceneData.scene_name}
-    //         Room description: {sceneData.scene_description}
-    //         Visual style: {sceneData.visual_style}
-    //         Objects to place: {PrintList(remainingObjects)}.
-    //         Objects descriptions: {objectDescriptions}
-    //         Available reference scene objects: {existingTargets}.
-    //         Place the objects that require a supporting surface 'above' the available reference objects.";
-    //     }
-
-    //     Debug.Log($"[Placement prompt - {phaseType}]\n{userPrompt}");
-
-    //     // Prepara la foto e il payload per Python
-    //     string gridImage = LoadRecentScreenshot();
-    //     string jsonPayload = JsonUtility.ToJson(new RequestDataImage
-    //     {
-    //         system_prompt = systemPrompt,
-    //         user_prompt = userPrompt,
-    //         image_string = gridImage
-    //     });
-
-    //     // Invia la chiamata alla rotta /generate_position
-    //     UnityWebRequest req = new UnityWebRequest("http://localhost:5000/generate_position", "POST");
-    //     byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
-    //     req.uploadHandler = new UploadHandlerRaw(bodyRaw);
-    //     req.downloadHandler = new DownloadHandlerBuffer();
-    //     req.SetRequestHeader("Content-Type", "application/json");
-
-    //     yield return req.SendWebRequest();
-
-    //     if (req.result == UnityWebRequest.Result.Success)
-    //     {
-    //         // Ricezione e Gestione della Coda
-    //         LLMAddObjectResponse response = JsonConvert.DeserializeObject<LLMAddObjectResponse>(req.downloadHandler.text);
-    //         string extractedJson = SanitizeJson(ExtractJsonBlock(response.response));
-
-    //         if (!string.IsNullOrEmpty(extractedJson))
-    //         {
-    //             // Suddivisione della lista ricevuta in un JArray
-    //             //JArray generatedObjects = JArray.Parse(extractedJson);
-                
-    //             JObject responseObj = JObject.Parse(extractedJson);
-    //             JArray generatedObjects = (JArray)responseObj["items"];
-
-    //             // Verifica l'intero piano prima di inserire oggetti nella coda.
-    //             HashSet<string> batchNames = new HashSet<string>();
-
-    //             foreach (JObject obj in generatedObjects)
-    //             {
-    //                 string objName = obj["name"].ToString().Replace(" ", "_");
-    //                 string target = obj["target"].ToString().Replace(" ", "_");
-    //                 string relation = obj["relation"].ToString();
-    //                 bool isAbsolute = obj["relation_type"].ToString() == "absolute";
-    //                 bool absoluteRelation = relation == "center" || relation.StartsWith("wall_") || relation.StartsWith("corner_");
-
-    //                 bool validFloorRelation = isAbsolute 
-    //                     ? absoluteRelation && target == "room" 
-    //                     : ((!absoluteRelation) && (relation != "above") && (target != objName) && ((placedObjects[target] != null) || batchNames.Contains(target)));
-
-    //                 bool validPhase = phaseType == "floor"
-    //                     ? ((obj["category"].ToString() == "furniture") && (obj["placement"].ToString() == "floor") && validFloorRelation)
-    //                     : ((obj["category"].ToString() == "accessory") 
-    //                         && (obj["placement"].ToString() == "tabletop") 
-    //                         && (!isAbsolute) 
-    //                         && (relation == "above") 
-    //                         && placedObjects[target] != null);
-
-    //                 if (!remainingObjects.Contains(objName) || !validPhase || !batchNames.Add(objName))
-    //                 {
-    //                     debug_info.text = "Invalid layout for this phase. Check Unity Console and press to retry.";
-    //                     Debug.LogWarning($"Piano rifiutato nella fase '{phaseType}': oggetto '{objName}', relazione '{relation}', target '{target}'. Nome non ammesso, duplicato o vincoli della fase non rispettati.");
-    //                     yield break;
-    //                 }
-    //             }
-
-    //             if (batchNames.Count == 0
-    //                 || (phaseType == "accessory" && batchNames.Count != remainingObjects.Count))
-    //             {
-    //                 debug_info.text = "Invalid layout for this phase. Check Unity Console and press to retry.";
-    //                 Debug.LogWarning($"Piano vuoto o incompleto nella fase '{phaseType}': ricevuti {batchNames.Count} oggetti per {remainingObjects.Count} nomi ancora da elaborare.");
-    //                 yield break;
-    //             }
-
-    //             // Inserimento degli oggetti nella coda locale
-    //             foreach (JObject obj in generatedObjects)
-    //             {
-    //                 localQueue.Enqueue(obj);
-    //             }
-
-    //             // Aggiornamento stato attuale in base alla fase
-    //             if (phaseType == "floor") currentState = PlacementState.Phase1_FloorPlacement;
-    //             else currentState = PlacementState.Phase2_AccessoryPlacement;
-
-    //             PlaceNextFromQueue();
-    //         }
-    //         else
-    //         {
-    //             Debug.LogError("No valid JSON found in response.");
-    //         }
-    //     }
-    //     else
-    //     {
-    //         debug_info.text = "Layout generation failed. Check Unity Console and press to retry.";
-
-    //         Debug.LogError($"LLM Error: {req.error}\n{req.downloadHandler.text}");
-    //     }
-    // }
-
-        IEnumerator GenerateLayoutPhase(string phaseType)
-    {
-        // Legge cosa c'è attualmente nella stanza
+        // Legge il piano semantico salvato in aaa.json.
         string currentScene = File.Exists(positionPath + "/aaa.json") ? File.ReadAllText(positionPath + "/aaa.json") : "";
         string existingTargets = string.IsNullOrEmpty(currentScene) ? "NONE (Empty room)" : currentScene;
         string objectDescriptions = "";
@@ -842,10 +373,10 @@ public class LLMPlacer : MonoBehaviour
         string systemPrompt;
         string userPrompt;
 
-        // Filtri Semantici: in base alla fase, il prompt cambia
+        // Prepara i prompt per la fase richiesta.
         if (phaseType == "floor")
         {
-            // FASE 1: SOLO PAVIMENTO
+            // Fase mobili: oggetti che non richiedono un altro mobile come supporto.
             systemPrompt = @"You are an AI Interior Designer. You receive a list of objects.
             YOUR TASK: Filter the list. Process objects that do not require another scene object as support.
             Exclude tabletop accessories.
@@ -881,7 +412,7 @@ public class LLMPlacer : MonoBehaviour
         }
         else
         {
-            // FASE 2: SOLO ACCESSORI
+            // Fase accessori: oggetti da appoggiare sui mobili presenti.
 
             // Conserva solo gli oggetti realmente presenti e attivi in Unity.
             JObject sceneObjects = string.IsNullOrEmpty(currentScene)
@@ -927,7 +458,7 @@ public class LLMPlacer : MonoBehaviour
 
         Debug.Log($"[Placement prompt - {phaseType}]\n{userPrompt}");
 
-        // Prepara la foto e il payload per Python
+        // Carica lo screenshot disponibile e prepara il payload della richiesta.
         string gridImage = LoadRecentScreenshot();
         string jsonPayload = JsonUtility.ToJson(new RequestDataImage
         {
@@ -936,7 +467,7 @@ public class LLMPlacer : MonoBehaviour
             image_string = gridImage
         });
 
-        // Invia la chiamata alla rotta /generate_position
+        // Invia la richiesta al server Python tramite /generate_position.
         UnityWebRequest req = new UnityWebRequest("http://localhost:5000/generate_position", "POST");
         byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonPayload);
         req.uploadHandler = new UploadHandlerRaw(bodyRaw);
@@ -947,25 +478,23 @@ public class LLMPlacer : MonoBehaviour
 
         if (req.result == UnityWebRequest.Result.Success)
         {
-            // Ricezione e Gestione della Coda
+            // Legge la risposta del server ed estrae il JSON.
             LLMAddObjectResponse response = JsonConvert.DeserializeObject<LLMAddObjectResponse>(req.downloadHandler.text);
             string extractedJson = SanitizeJson(ExtractJsonBlock(response.response));
 
             if (!string.IsNullOrEmpty(extractedJson))
             {
-                // Suddivisione della lista ricevuta in un JArray
-                //JArray generatedObjects = JArray.Parse(extractedJson);
-                
+                // Estrae l'array items dalla risposta JSON.
                 JObject responseObj = JObject.Parse(extractedJson);
                 JArray generatedObjects = (JArray)responseObj["items"];
 
-                // Inserimento degli oggetti nella coda locale
+                // Accoda gli oggetti restituiti dal modello nella coda locale.
                 foreach (JObject obj in generatedObjects)
                 {
                     localQueue.Enqueue(obj);
                 }
 
-                // Aggiornamento stato attuale in base alla fase
+                // Imposta lo stato di elaborazione della fase richiesta.
                 if (phaseType == "floor") currentState = PlacementState.Phase1_FloorPlacement;
                 else currentState = PlacementState.Phase2_AccessoryPlacement;
 
@@ -983,16 +512,14 @@ public class LLMPlacer : MonoBehaviour
         }
     }
 
-
-
-    // Supporto per stampare la lista pulita e formattata
+    // Formatta l'elenco dei nomi per il prompt, sostituendo gli spazi con underscore.
     private string PrintList(List<string> list)
     {
         if (list == null || list.Count == 0) return "[]";
         return "[" + string.Join(", ", list.Select(item => $"\"{item.Replace(" ", "_")}\"")) + "]";
     }
 
-    // successMessage viene restituito solo se la ricostruzione è terminata e non risultano oggetti non collocati.
+    // Restituisce un messaggio in base all'esito dell'ultima ricostruzione.
     private string GetPlacementStatusMessage(string successMessage)
     {
         if (td == null || !td.LastPlacementCompleted)
@@ -1005,10 +532,10 @@ public class LLMPlacer : MonoBehaviour
         return successMessage;
     }
 
-    // Piazzamento degli oggetti presenti nella coda locale
+    // Elabora il prossimo oggetto della coda o aggiorna lo stato a fine fase.
     private void PlaceNextFromQueue()
     {
-        // Controllo di fine fase
+        // Se la coda è vuota, aggiorna lo stato e il messaggio dell'interfaccia.
         if (localQueue.Count == 0)
         {
             if (currentState == PlacementState.Phase1_FloorPlacement)
@@ -1024,13 +551,13 @@ public class LLMPlacer : MonoBehaviour
             return;
         }
 
-        // Estrazione del primo oggetto dalla coda
+        // Estrae il prossimo oggetto da elaborare.
         JObject nextObj = localQueue.Dequeue();
         
-        // Assicura la corretta formattazione del nome (es. "Cozy Sofa" diventa "Cozy_Sofa")
+        // Sostituisce gli spazi nel nome con underscore.
         string objName = nextObj["name"]?.ToString().Replace(" ", "_");
 
-        // Lettura del file aaa.json attuale (se non esiste, ne crea uno vuoto)
+        // Carica il piano salvato o inizializza un dizionario vuoto.
         JObject aaaData = File.Exists(positionPath + "/aaa.json") ? JObject.Parse(File.ReadAllText(positionPath + "/aaa.json")) : new JObject();
 
         if (aaaData[objName] != null)
@@ -1042,37 +569,22 @@ public class LLMPlacer : MonoBehaviour
             return;
         }
 
-        // Aggiunta del nuovo oggetto al dizionario usando il nome come chiave
+        // Aggiunge l'oggetto al piano usando il nome come chiave.
         aaaData[objName] = nextObj;
 
-        // Salvataggio del file 
+        // Salva il piano aggiornato in aaa.json.
         File.WriteAllText(positionPath + "/aaa.json", aaaData.ToString());
         
-        // Avvio del piazzamento 
+        // Ricostruisce tutti gli oggetti presenti nel piano aggiornato.
         td.StartPlacing();
         CaptureScreenshot();
 
         debug_info.text = GetPlacementStatusMessage($"Placed {objName}.") + " Press to place next.";
     }
 
-    /*string ExtractJsonBlock(string response)
-    {
-        int firstBrace = response.IndexOf('{');
-        int lastBrace = response.LastIndexOf('}');
-
-        if (firstBrace >= 0 && lastBrace > firstBrace)
-        {
-            string jsonBlock = response.Substring(firstBrace, lastBrace - firstBrace + 1);
-            int extraClose = jsonBlock.LastIndexOf("}");
-            return jsonBlock.Substring(0, extraClose + 1);
-        }
-
-        return null;
-    }*/
-
     string ExtractJsonBlock(string response)
     {
-        // Cerca la prima comparsa di { oppure [
+        // Individua il primo delimitatore di apertura.
         int firstBrace = response.IndexOf('{');
         int firstBracket = response.IndexOf('[');
         int start = -1;
@@ -1081,7 +593,7 @@ public class LLMPlacer : MonoBehaviour
         else if (firstBrace >= 0) start = firstBrace;
         else if (firstBracket >= 0) start = firstBracket;
 
-        // Cerca l'ultima comparsa di } oppure ]
+        // Individua l'ultimo delimitatore di chiusura.
         int lastBrace = response.LastIndexOf('}');
         int lastBracket = response.LastIndexOf(']');
         int end = Math.Max(lastBrace, lastBracket);
@@ -1120,50 +632,21 @@ public class LLMPlacer : MonoBehaviour
         }
     }
 
-    /*public void CaptureScreenshot()
-    {
-        grid.SetActive(true);
-        StartCoroutine(TakeScreenshot());
-    }
-
-    private System.Collections.IEnumerator TakeScreenshot()
-    {
-        yield return new WaitForEndOfFrame();  // Aspetta che il frame sia disegnato
-
-        Texture2D screenImage = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
-        screenImage.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
-        screenImage.Apply();
-
-        byte[] imageBytes = screenImage.EncodeToPNG();
-
-        string folderPath = Path.Combine(Application.dataPath, "Resources/Screenshots");
-        if (!Directory.Exists(folderPath))
-            Directory.CreateDirectory(folderPath);
-
-        string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-        string filePath = Path.Combine(folderPath, $"screenshot_{timestamp}.png");
-        File.WriteAllBytes(filePath, imageBytes);
-
-        grid.SetActive(false);
-    }
-*/
-
     public void CaptureScreenshot()
     {
-        // RIMOSSO: grid.SetActive(true) per avere un'immagine pulita senza la griglia
         StartCoroutine(TakeScreenshot());
     }
 
     private System.Collections.IEnumerator TakeScreenshot()
     {
-        // 1. Troviamo l'interfaccia utente (Canvas) e la nascondiamo
+        // Nasconde temporaneamente il Canvas trovato per escluderlo dallo screenshot.
         Canvas uiCanvas = FindObjectOfType<Canvas>();
         if (uiCanvas != null) uiCanvas.enabled = false;
 
-        // 2. Aspetta che Unity disegni il frame 
+        // Attende la fine del frame prima di acquisire l'immagine.
         yield return new WaitForEndOfFrame();  
 
-        // 3. Scattiamo la foto
+        // Acquisisce l'immagine a schermo e la salva in formato PNG.
         Texture2D screenImage = new Texture2D(Screen.width, Screen.height, TextureFormat.RGB24, false);
         screenImage.ReadPixels(new Rect(0, 0, Screen.width, Screen.height), 0, 0);
         screenImage.Apply();
@@ -1178,10 +661,8 @@ public class LLMPlacer : MonoBehaviour
         string filePath = Path.Combine(folderPath, $"screenshot_{timestamp}.png");
         File.WriteAllBytes(filePath, imageBytes);
 
-        // 4. Riaccendiamo l'interfaccia utente
+        // Riabilita il Canvas al termine della cattura.
         if (uiCanvas != null) uiCanvas.enabled = true;
-        
-        // RIMOSSO: grid.SetActive(false);
     }
 
     IEnumerator RefineScene()
@@ -1317,40 +798,15 @@ public class LLMPlacer : MonoBehaviour
         }
 
     }
-
-    /*private string SanitizeJson(string s)
+    
+    private string SanitizeJson(string s)
     {
         if (string.IsNullOrEmpty(s)) return s;
 
-        // togli code fences / markdown
-        s = s.Replace("\r", "");
-        int i = s.IndexOf('{'); int j = s.LastIndexOf('}');
-        if (i >= 0 && j > i) s = s.Substring(i, j - i + 1);
-
-        // normalizza apici curvi -> doppi apici
-        s = s.Replace('’', '\'').Replace('‘', '\'');
-        s = System.Text.RegularExpressions.Regex.Replace(s, @"(?<!\\)\'", "\"");
-
-        // rimuovi virgole finali prima di } o ]
-        s = System.Text.RegularExpressions.Regex.Replace(s, @",\s*(\}|\])", "$1");
-
-        // chiudi eventuali parentesi mancanti (conta graffe)
-        int opens = s.Count(c => c == '{'), closes = s.Count(c => c == '}');
-        if (opens > closes) s += new string('}', opens - closes);
-
-        Debug.Log($"[JSON PULITO INVIATO AL PARSER]:\n{s}");
-
-        return s;
-    }
-   */
-
-   private string SanitizeJson(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return s;
-
-        // Togli code fences / markdown
+        // Rimuove i ritorni carrello dal testo.
         s = s.Replace("\r", "");
         
+        // Individua i delimitatori esterni del blocco JSON.
         int firstBrace = s.IndexOf('{');
         int firstBracket = s.IndexOf('[');
         int start = -1;
@@ -1364,7 +820,7 @@ public class LLMPlacer : MonoBehaviour
         if (start >= 0 && end > start) 
             s = s.Substring(start, end - start + 1);
 
-        // Rimuovi virgole finali prima di } o ]
+        // Rimuove le virgole finali prima di } oppure ].
         s = System.Text.RegularExpressions.Regex.Replace(s, @",\s*(\}|\])", "$1");
 
         Debug.Log($"[JSON PULITO INVIATO AL PARSER]:\n{s}");
